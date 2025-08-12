@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canteen Menu Recommender</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f9fafb;
+        }
+        .highlight-dish {
+            transform: scale(1.03);
+            box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.3), 0 4px 6px -2px rgba(16, 185, 129, 0.2);
+            border-color: #10b981;
+            background-color: #ecfdf5;
+        }
+        .error-message {
+            text-align: center;
+            padding: 2rem;
+            background-color: #fff;
+            border: 1px solid #fee2e2;
+            color: #b91c1c;
+            border-radius: 0.75rem;
+        }
+        .day-dish {
+            border-top: 1px solid #e5e7eb;
+            padding-top: 1rem;
+            margin-top: 1rem;
+        }
+        .day-dish:first-child {
+            border-top: none;
+            padding-top: 0;
+            margin-top: 0;
+        }
+        details > summary {
+            list-style: none;
+        }
+        details > summary::-webkit-details-marker {
+            display: none;
+        }
+        details[open] summary .arrow-down {
+            transform: rotate(180deg);
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+
+    <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+
+        <!-- Header -->
+        <header class="flex flex-col sm:flex-row items-center justify-between pb-6 border-b-2 border-gray-100 mb-8 gap-4">
+            <div class="flex items-center gap-4">
+                <img src="https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=800&auto=format&fit=crop" alt="A bowl of healthy food" class="h-12 w-12 rounded-full object-cover">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-800">Canteen Menu</h1>
+                    <p class="text-gray-500">Your Weekly Dining Recommendations</p>
+                </div>
+            </div>
+            <div id="current-week" class="text-right text-gray-500 text-sm md:text-base font-medium"></div>
+        </header>
+
+        <!-- Main controls -->
+        <section id="controls-section" class="bg-white p-6 rounded-xl shadow-md mb-8">
+            <details open>
+                <summary class="flex justify-between items-center cursor-pointer">
+                    <h2 class="text-lg font-bold text-gray-800">Filter Preferences</h2>
+                    <svg class="w-6 h-6 text-gray-500 transition-transform arrow-down" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                    </svg>
+                </summary>
+                <div class="mt-4 border-t pt-4">
+                    <p class="text-gray-500 mb-4">Select, add, or remove keywords for your recommendations. Changes are saved automatically.</p>
+                    <div id="keywords-container" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-x-4 gap-y-3">
+                        <!-- Checkboxes will be dynamically inserted here -->
+                    </div>
+                    <div class="flex items-center gap-2 mt-6 border-t pt-4">
+                        <input type="text" id="new-keyword-input" placeholder="Add new preference..." class="flex-grow w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                        <button id="add-keyword-btn" class="bg-emerald-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-emerald-600">Add</button>
+                    </div>
+                </div>
+            </details>
+        </section>
+
+        <div class="text-center mb-8">
+             <button id="process-btn" class="w-full sm:w-auto bg-emerald-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed">
+                Get Menu & Recommendations
+            </button>
+            <p id="api-limit-text" class="text-sm text-gray-500 mt-2"></p>
+        </div>
+
+        <!-- Menu Grid -->
+        <main id="menu-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 hidden">
+            <!-- Menu columns will be dynamically inserted here -->
+        </main>
+
+        <!-- Loading Spinner -->
+        <div id="loading-spinner" class="hidden justify-center items-center h-64">
+            <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-emerald-500"></div>
+            <p class="ml-4 text-gray-600">Asking Gemini to read the website and make selections...</p>
+        </div>
+        
+        <!-- Error Message Container -->
+        <div id="error-container" class="hidden"></div>
+
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- DOM Elements ---
+            const menuContainer = document.getElementById('menu-container');
+            const loadingSpinner = document.getElementById('loading-spinner');
+            const errorContainer = document.getElementById('error-container');
+            const processBtn = document.getElementById('process-btn');
+            const keywordsContainer = document.getElementById('keywords-container');
+            const addKeywordBtn = document.getElementById('add-keyword-btn');
+            const newKeywordInput = document.getElementById('new-keyword-input');
+            const apiLimitText = document.getElementById('api-limit-text');
+
+            // --- State ---
+            const GEMINI_API_KEY = "AIzaSyBLNBurd4sRjo5dwZF95B-gVYIg36bTvao";
+            const API_CALL_LIMIT = 4;
+            const defaultKeywords = ['burger', 'flæskesteg', 'thai', 'indian', 'karry', 'curry', 'bolognese', 'moussaka', 'gyudon', 'bao', 'spidsbryst', 'oksekød', 'okse', 'fisk'];
+            let keywords = [];
+
+            // --- Cookie Functions ---
+            function saveCookie(name, value, days) {
+                const d = new Date();
+                d.setTime(d.getTime() + (days * 24 * 60 * 60 * 1000));
+                let expires = "expires="+ d.toUTCString();
+                document.cookie = name + "=" + JSON.stringify(value) + ";" + expires + ";path=/;SameSite=Lax";
+            }
+
+            function loadCookie(name) {
+                let cookieName = name + "=";
+                let decodedCookie = decodeURIComponent(document.cookie);
+                let ca = decodedCookie.split(';');
+                for(let i = 0; i <ca.length; i++) {
+                    let c = ca[i];
+                    while (c.charAt(0) === ' ') c = c.substring(1);
+                    if (c.indexOf(cookieName) === 0) {
+                        try {
+                            return JSON.parse(c.substring(cookieName.length, c.length));
+                        } catch (e) {
+                            return null;
+                        }
+                    }
+                }
+                return null;
+            }
+
+            function getApiCount() {
+                const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+                const apiCountData = loadCookie('canteen_api_count');
+
+                if (apiCountData && apiCountData.date === today) {
+                    return apiCountData.count;
+                }
+                return 0; // Reset count if no cookie or date is old
+            }
+
+            function incrementApiCount() {
+                const today = new Date().toISOString().split('T')[0];
+                let count = getApiCount();
+                count++;
+                saveCookie('canteen_api_count', { date: today, count: count }, 1);
+                updateApiLimitText();
+            }
+            
+            function updateApiLimitText() {
+                const count = getApiCount();
+                const remaining = API_CALL_LIMIT - count;
+                apiLimitText.textContent = `You have ${remaining} recommendations left today.`;
+                if (remaining <= 0) {
+                    processBtn.disabled = true;
+                    apiLimitText.textContent = "You have reached your daily limit for recommendations.";
+                } else {
+                    processBtn.disabled = false;
+                }
+            }
+
+
+            /**
+             * Renders the keywords checkboxes and their delete buttons.
+             */
+            function renderKeywords() {
+                keywordsContainer.innerHTML = keywords.map(keyword => `
+                    <label class="flex items-center justify-between space-x-2 p-2 rounded-lg hover:bg-gray-50 cursor-pointer border border-transparent">
+                        <div class="flex items-center space-x-2">
+                            <input type="checkbox" value="${keyword}" class="keyword-checkbox h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" checked>
+                            <span class="text-gray-700 capitalize">${keyword}</span>
+                        </div>
+                        <button class="delete-keyword-btn text-gray-400 hover:text-red-500" data-keyword="${keyword}" title="Delete keyword">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                            </svg>
+                        </button>
+                    </label>
+                `).join('');
+            }
+
+            /**
+             * Calls the Gemini API to analyze the website HTML and get both the menu and recommendations.
+             */
+            async function getMenuAndRecommendations(siteHtml, activeKeywords, apiKey) {
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+                const prompt = `You are a menu parsing and recommendation assistant. Analyze the provided HTML from the Madkastel Hub Nordic website. Here is the website HTML: --- ${siteHtml} --- Here are the user's food preferences, in order of priority: --- ${activeKeywords} --- Your task is to return a single JSON object with two top-level keys: "menu" and "recommendations". 1. For the "menu" key: The value should be an object with keys "HUB 1", "HUB 2", "HUB 3", and "Foodcore". For "HUB 1", "HUB 2", and "HUB 3", the value should be an object mapping each day ("Mandag" to "Fredag") to its dish. IMPORTANT: "HUB 1" is the first main column. "HUB 2" is the second main column. "HUB 3" is the "Kays" menu. For "Foodcore", the value should be an object mapping each day to another object containing "Globetrotter" and "Homebound" dishes. 2. For the "recommendations" key: The value should be an object mapping each day ("Mandag" to "Fredag") to the name of the recommended cafeteria (e.g., "HUB 1"). The recommendation should be the first dish found for a day that matches a keyword from the user's preferences. If no match is found for a day, the value should be "Any". Ensure the final output is ONLY a valid JSON object.`;
+                const schema = { type: "OBJECT", properties: { "menu": { type: "OBJECT", properties: { "HUB 1": { type: "OBJECT", properties: { "Mandag": { type: "STRING" }, "Tirsdag": { type: "STRING" }, "Onsdag": { type: "STRING" }, "Torsdag": { type: "STRING" }, "Fredag": { type: "STRING" } } }, "HUB 2": { type: "OBJECT", properties: { "Mandag": { type: "STRING" }, "Tirsdag": { type: "STRING" }, "Onsdag": { type: "STRING" }, "Torsdag": { type: "STRING" }, "Fredag": { type: "STRING" } } }, "HUB 3": { type: "OBJECT", properties: { "Mandag": { type: "STRING" }, "Tirsdag": { type: "STRING" }, "Onsdag": { type: "STRING" }, "Torsdag": { type: "STRING" }, "Fredag": { type: "STRING" } } }, "Foodcore": { type: "OBJECT", properties: { "Mandag": { type: "OBJECT", properties: { "Globetrotter": { type: "STRING" }, "Homebound": { type: "STRING" } } }, "Tirsdag": { type: "OBJECT", properties: { "Globetrotter": { type: "STRING" }, "Homebound": { type: "STRING" } } }, "Onsdag": { type: "OBJECT", properties: { "Globetrotter": { type: "STRING" }, "Homebound": { type: "STRING" } } }, "Torsdag": { type: "OBJECT", properties: { "Globetrotter": { type: "STRING" }, "Homebound": { type: "STRING" } } }, "Fredag": { type: "OBJECT", properties: { "Globetrotter": { type: "STRING" }, "Homebound": { type: "STRING" } } } } } } }, "recommendations": { type: "OBJECT", properties: { "Mandag": { type: "STRING" }, "Tirsdag": { type: "STRING" }, "Onsdag": { type: "STRING" }, "Torsdag": { type: "STRING" }, "Fredag": { type: "STRING" } } } } };
+                const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json", responseSchema: schema } };
+
+                try {
+                    const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    if (!response.ok) {
+                         const errorBody = await response.text();
+                         console.error("API Error Response:", errorBody);
+                         throw new Error(`API request failed with status ${response.status}. Please check your API key.`);
+                    }
+                    const result = await response.json();
+                    if (result.candidates?.[0]?.content?.parts?.[0]) {
+                        return JSON.parse(result.candidates[0].content.parts[0].text);
+                    } else { 
+                        throw new Error("Invalid response structure from Gemini API."); 
+                    }
+                } catch (error) {
+                    console.error("Error calling Gemini API:", error);
+                    displayError(error.message);
+                    return null;
+                }
+            }
+            
+            function displayError(message) {
+                loadingSpinner.classList.add('hidden');
+                errorContainer.innerHTML = `<div class="error-message"><h3 class="font-bold text-lg mb-2">An Error Occurred</h3><p>${message}</p></div>`;
+                errorContainer.classList.remove('hidden');
+            }
+
+            function renderMenu(menuData, recommendations) {
+                loadingSpinner.classList.add('hidden');
+                menuContainer.innerHTML = '';
+                menuContainer.classList.remove('hidden');
+
+                const cafeteriaOrder = ["HUB 1", "HUB 2", "HUB 3", "Foodcore"];
+                const daysOrder = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag"];
+
+                for (const cafeteria of cafeteriaOrder) {
+                    const cafeteriaMenu = menuData[cafeteria];
+                    if (!cafeteriaMenu) continue;
+
+                    const column = document.createElement('div');
+                    column.className = 'bg-white rounded-xl shadow-md overflow-hidden flex flex-col';
+                    
+                    let headerHtml = `<div class="p-4 bg-gray-100 border-b border-gray-200"><h2 class="text-xl font-bold text-center text-gray-700">${cafeteria}</h2></div>`;
+                    
+                    let dailyDishesHtml = '<div class="p-5 flex-grow">';
+                    for (const day of daysOrder) {
+                        const isRecommended = recommendations[day] === cafeteria;
+                        const dishEntry = cafeteriaMenu[day];
+                        if (!dishEntry) continue;
+
+                        const cardClasses = `p-4 rounded-lg border-2 day-dish ${isRecommended ? 'highlight-dish' : 'bg-white border-transparent'}`;
+                        
+                        let dishHtml = '';
+                        if (typeof dishEntry === 'string') {
+                            dishHtml = `<p class="text-gray-600">${dishEntry}</p>`;
+                        } else { // Foodcore
+                            dishHtml = '<div>';
+                            for (const subKitchen in dishEntry) {
+                                dishHtml += `<div class="mb-2 last:mb-0"><h4 class="font-medium text-gray-700">${subKitchen}</h4><p class="text-gray-600">${dishEntry[subKitchen]}</p></div>`;
+                            }
+                            dishHtml += '</div>';
+                        }
+                        
+                        dailyDishesHtml += `<div class="${cardClasses}"><div class="flex justify-between items-center mb-2"><h3 class="font-semibold text-gray-800">${day}</h3>${isRecommended ? '<span class="text-xs font-bold bg-emerald-500 text-white py-1 px-2 rounded-full shadow">EAT HERE</span>' : ''}</div>${dishHtml}</div>`;
+                    }
+                    dailyDishesHtml += '</div>';
+                    column.innerHTML = headerHtml + dailyDishesHtml;
+                    menuContainer.appendChild(column);
+                }
+            }
+            
+            async function fetchWebsiteContent() {
+                const proxyUrl = 'https://corsproxy.io/?';
+                const menuUrl = 'https://hubnordic.madkastel.dk/';
+                try {
+                    const response = await fetch(`${proxyUrl}${encodeURIComponent(menuUrl)}`);
+                    if (!response.ok) throw new Error('Network response was not ok.');
+                    return await response.text();
+                } catch (error) {
+                    console.error("Failed to fetch website content:", error);
+                    displayError("Kunne ikke oprette forbindelse til Madkastel-webstedet. Det er muligvis midlertidigt nede.");
+                    return null;
+                }
+            }
+
+            function setCurrentWeek() {
+                const now = new Date();
+                const startOfYear = new Date(now.getFullYear(), 0, 1);
+                const pastDaysOfYear = (now.getTime() - startOfYear.getTime()) / 86400000;
+                const weekNumber = Math.ceil((pastDaysOfYear + startOfYear.getDay() + 1) / 7);
+                document.getElementById('current-week').textContent = `Uge ${weekNumber}`;
+            }
+
+            // --- Event Listeners ---
+            processBtn.addEventListener('click', async () => {
+                const apiCallCount = getApiCount();
+                if (apiCallCount >= API_CALL_LIMIT) {
+                    displayError("You have reached your daily limit of 4 recommendations.");
+                    return;
+                }
+
+                menuContainer.classList.add('hidden');
+                errorContainer.classList.add('hidden');
+                loadingSpinner.classList.remove('hidden');
+
+                const activeKeywords = Array.from(document.querySelectorAll('.keyword-checkbox:checked')).map(cb => cb.value).join(', ');
+                if (!activeKeywords) {
+                    displayError("Please select at least one food preference.");
+                    loadingSpinner.classList.add('hidden');
+                    return;
+                }
+
+                const siteHtml = await fetchWebsiteContent();
+                if (siteHtml) {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(siteHtml, 'text/html');
+                    const menuContainerEl = doc.querySelector('.c-menu__content');
+                    const relevantHtml = menuContainerEl ? menuContainerEl.innerHTML : siteHtml;
+
+                    const result = await getMenuAndRecommendations(relevantHtml, activeKeywords, GEMINI_API_KEY);
+                    if (result) {
+                        incrementApiCount();
+                        renderMenu(result.menu, result.recommendations);
+                    }
+                }
+                loadingSpinner.classList.add('hidden');
+            });
+
+            addKeywordBtn.addEventListener('click', () => {
+                const newKeyword = newKeywordInput.value.trim().toLowerCase();
+                if (newKeyword && !keywords.includes(newKeyword)) {
+                    keywords.push(newKeyword);
+                    saveCookie('canteen_keywords', keywords, 365);
+                    renderKeywords();
+                    newKeywordInput.value = '';
+                }
+            });
+
+            keywordsContainer.addEventListener('click', (e) => {
+                const deleteBtn = e.target.closest('.delete-keyword-btn');
+                if (deleteBtn) {
+                    const keywordToDelete = deleteBtn.dataset.keyword;
+                    keywords = keywords.filter(k => k !== keywordToDelete);
+                    saveCookie('canteen_keywords', keywords, 365);
+                    renderKeywords();
+                }
+            });
+            
+            // --- Initial Setup ---
+            const savedKeywords = loadCookie('canteen_keywords');
+            keywords = Array.isArray(savedKeywords) && savedKeywords.length > 0 ? savedKeywords : defaultKeywords;
+            
+            renderKeywords();
+            setCurrentWeek();
+            updateApiLimitText();
+        });
+    </script>
+</body>
+</html>
