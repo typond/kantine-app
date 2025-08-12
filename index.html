@@ -127,46 +127,9 @@
             const API_CALL_LIMIT = 4;
             const defaultKeywords = ['burger', 'flæskesteg', 'thai', 'indian', 'karry', 'curry', 'bolognese', 'moussaka', 'gyudon', 'bao', 'spidsbryst', 'oksekød', 'okse', 'fisk'];
             let keywords = [];
+            let parsedMenuData = null; // In-memory cache for the session
 
-            // --- Cache Functions ---
-            function getWeekId(date = new Date()) {
-                const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-                d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
-                const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-                const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-                return `${d.getUTCFullYear()}-W${weekNo}`;
-            }
-
-            function saveMenuToCache(menuData) {
-                try {
-                    const weekId = getWeekId();
-                    const cacheData = { weekId, menu: menuData };
-                    localStorage.setItem('canteen_menu_cache', JSON.stringify(cacheData));
-                    console.log('Menu saved to cache for week:', weekId);
-                } catch (e) {
-                    console.error("Failed to save menu to cache", e);
-                }
-            }
-
-            function loadMenuFromCache() {
-                const cachedItem = localStorage.getItem('canteen_menu_cache');
-                if (!cachedItem) return null;
-                try {
-                    const data = JSON.parse(cachedItem);
-                    if (data.weekId === getWeekId() && data.menu) {
-                        console.log('Loaded menu from cache for week:', data.weekId);
-                        return data.menu;
-                    }
-                } catch (e) {
-                    console.error('Failed to parse cached menu', e);
-                    localStorage.removeItem('canteen_menu_cache'); // Clear corrupted cache
-                }
-                return null;
-            }
-
-            let parsedMenuData = loadMenuFromCache(); // Load from cache on init
-
-            // --- Cookie Functions ---
+            // --- Cookie & Cache Functions ---
             function saveCookie(name, value, days) {
                 const d = new Date();
                 d.setTime(d.getTime() + (days * 24 * 60 * 60 * 1000));
@@ -219,43 +182,93 @@
                 }
             }
 
+            function saveMenuToCache(menuData) {
+                const today = new Date().toISOString().split('T')[0];
+                const cacheData = { date: today, menu: menuData };
+                localStorage.setItem('canteen_menu_cache', JSON.stringify(cacheData));
+            }
+
+            function loadMenuFromCache() {
+                const today = new Date().toISOString().split('T')[0];
+                const cachedData = localStorage.getItem('canteen_menu_cache');
+                if (cachedData) {
+                    try {
+                        const parsed = JSON.parse(cachedData);
+                        if (parsed.date === today) {
+                            return parsed.menu;
+                        }
+                    } catch (e) {
+                        return null;
+                    }
+                }
+                return null;
+            }
+
             function renderKeywords() {
                 keywordsContainer.innerHTML = keywords.map(keyword => `<label class="flex items-center justify-between space-x-2 p-2 rounded-lg hover:bg-gray-50 cursor-pointer border border-transparent"><div class="flex items-center space-x-2"><input type="checkbox" value="${keyword}" class="keyword-checkbox h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" checked><span class="text-gray-700 capitalize">${keyword}</span></div><button class="delete-keyword-btn text-gray-400 hover:text-red-500" data-keyword="${keyword}" title="Delete keyword"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg></button></label>`).join('');
             }
 
             // --- Gemini API Functions ---
-            async function parseMenuWithGemini(siteHtml, apiKey) {
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-                const prompt = `You are a menu parsing assistant. Analyze the provided HTML and extract the weekly menu. Return a single JSON object with keys "HUB 1", "HUB 2", "HUB 3", and "Foodcore". For "HUB 1", "HUB 2", and "HUB 3", the value should be an object mapping each day ("Mandag" to "Fredag") to its dish. "HUB 1" is the first main column, "HUB 2" is the second, and "HUB 3" is the "Kays" menu. For "Foodcore", the value should be an object mapping each day to another object containing "Globetrotter" and "Homebound" dishes. Here is the HTML: --- ${siteHtml} ---`;
-                const schema = { type: "OBJECT", properties: { "HUB 1": { "$ref": "#/definitions/dailyDishes" }, "HUB 2": { "$ref": "#/definitions/dailyDishes" }, "HUB 3": { "$ref": "#/definitions/dailyDishes" }, "Foodcore": { type: "OBJECT", properties: { "Mandag": { "$ref": "#/definitions/foodcoreDay" }, "Tirsdag": { "$ref": "#/definitions/foodcoreDay" }, "Onsdag": { "$ref": "#/definitions/foodcoreDay" }, "Torsdag": { "$ref": "#/definitions/foodcoreDay" }, "Fredag": { "$ref": "#/definitions/foodcoreDay" } } } }, definitions: { dailyDishes: { type: "OBJECT", properties: { "Mandag": { type: "STRING" }, "Tirsdag": { type: "STRING" }, "Onsdag": { type: "STRING" }, "Torsdag": { type: "STRING" }, "Fredag": { type: "STRING" } } }, foodcoreDay: { type: "OBJECT", properties: { "Globetrotter": { type: "STRING" }, "Homebound": { type: "STRING" } } } } };
-                const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json", responseSchema: schema } };
+            async function callGemini(prompt, apiKey) {
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+                const payload = { contents: [{ parts: [{ text: prompt }] }] };
                 try {
                     const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                    if (!response.ok) throw new Error(`API request failed with status ${response.status}.`);
+                    if (!response.ok) {
+                        const errorBody = await response.text();
+                        console.error("API Error Response:", errorBody);
+                        throw new Error(`API request failed with status ${response.status}.`);
+                    }
                     const result = await response.json();
-                    if (result.candidates?.[0]?.content?.parts?.[0]) return JSON.parse(result.candidates[0].content.parts[0].text);
-                    else throw new Error("Invalid response structure from Gemini API.");
-                } catch (error) { throw error; }
+                    if (result.candidates?.[0]?.content?.parts?.[0]) {
+                        let jsonString = result.candidates[0].content.parts[0].text;
+                        jsonString = jsonString.replace(/```json\n/g, '').replace(/```/g, '');
+                        return JSON.parse(jsonString);
+                    } else {
+                        throw new Error("Invalid response structure from Gemini API.");
+                    }
+                } catch (error) {
+                    console.error("Error calling Gemini API:", error);
+                    displayError(error.message);
+                    return null;
+                }
+            }
+
+            async function parseMenuWithGemini(siteHtml, apiKey) {
+                const prompt = `You are a menu parsing assistant. Analyze the provided HTML and extract the weekly menu. Return a single JSON object with keys "HUB 1", "HUB 2", "HUB 3", and "Foodcore". For "HUB 1", "HUB 2", and "HUB 3", the value should be an object mapping each day ("Mandag" to "Fredag") to its dish. "HUB 1" is the first main column, "HUB 2" is the second, and "HUB 3" is the "Kays" menu. For "Foodcore", the value should be an object mapping each day to another object containing "Globetrotter" and "Homebound" dishes. Here is the HTML: --- ${siteHtml} ---`;
+                return await callGemini(prompt, apiKey);
             }
 
             async function getRecommendationsFromGemini(menuData, activeKeywords, apiKey) {
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
                 const prompt = `Given the following JSON menu: --- ${JSON.stringify(menuData)} --- And the user's food preferences in order of priority: --- ${activeKeywords} --- Return a JSON object mapping each day ("Mandag" to "Fredag") to the name of the recommended cafeteria. The recommendation should be the first dish found for a day that matches a keyword. If no match is found, the value should be "Any".`;
-                const schema = { type: "OBJECT", properties: { "Mandag": { type: "STRING" }, "Tirsdag": { type: "STRING" }, "Onsdag": { type: "STRING" }, "Torsdag": { type: "STRING" }, "Fredag": { type: "STRING" } } };
-                const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json", responseSchema: schema } };
-                 try {
-                    const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                    if (!response.ok) throw new Error(`API request failed with status ${response.status}.`);
-                    const result = await response.json();
-                    if (result.candidates?.[0]?.content?.parts?.[0]) return JSON.parse(result.candidates[0].content.parts[0].text);
-                    else throw new Error("Invalid response structure from Gemini API.");
-                } catch (error) { throw error; }
+                return await callGemini(prompt, apiKey);
             }
             
             function displayError(message) {
                 loadingSpinner.classList.add('hidden');
                 errorContainer.innerHTML = `<div class="error-message"><h3 class="font-bold text-lg mb-2">An Error Occurred</h3><p>${message}</p></div>`;
                 errorContainer.classList.remove('hidden');
+            }
+            
+            function generateCalendarLink(day, cafeteria, dish) {
+                const dayMap = { "Mandag": 1, "Tirsdag": 2, "Onsdag": 3, "Torsdag": 4, "Fredag": 5 };
+                const targetDay = dayMap[day];
+                if (typeof targetDay === 'undefined') return '#';
+                const now = new Date();
+                const today = now.getDay();
+                let dayDifference = targetDay - today;
+                if (dayDifference < 0) dayDifference += 7;
+                const eventDate = new Date();
+                eventDate.setDate(now.getDate() + dayDifference);
+                const startTime = new Date(eventDate.setHours(11, 30, 0, 0));
+                const endTime = new Date(eventDate.setHours(12, 0, 0, 0));
+                const formatDate = (date) => date.toISOString().replace(/-|:|\.\d{3}/g, '');
+                const baseUrl = "https://www.google.com/calendar/render?action=TEMPLATE";
+                const title = encodeURIComponent(`Frokost: ${cafeteria}`);
+                const details = encodeURIComponent(`Dagens ret: ${dish}`);
+                const location = encodeURIComponent("HUBNORDIC Kantine");
+                const dates = `${formatDate(startTime)}/${formatDate(endTime)}`;
+                return `${baseUrl}&text=${title}&dates=${dates}&details=${details}&location=${location}`;
             }
 
             function renderMenu(menuData, recommendations) {
@@ -277,16 +290,22 @@
                         if (!dishEntry) continue;
                         const cardClasses = `p-4 rounded-lg border-2 day-dish ${isRecommended ? 'highlight-dish' : 'bg-white border-transparent'}`;
                         let dishHtml = '';
+                        let fullDishDescription = '';
                         if (typeof dishEntry === 'string') {
                             dishHtml = `<p class="text-gray-600">${dishEntry}</p>`;
+                            fullDishDescription = dishEntry;
                         } else {
                             dishHtml = '<div>';
+                            let dishParts = [];
                             for (const subKitchen in dishEntry) {
                                 dishHtml += `<div class="mb-2 last:mb-0"><h4 class="font-medium text-gray-700">${subKitchen}</h4><p class="text-gray-600">${dishEntry[subKitchen]}</p></div>`;
+                                dishParts.push(`${subKitchen}: ${dishEntry[subKitchen]}`);
                             }
                             dishHtml += '</div>';
+                            fullDishDescription = dishParts.join(' / ');
                         }
-                        dailyDishesHtml += `<div class="${cardClasses}"><div class="flex justify-between items-center mb-2"><h3 class="font-semibold text-gray-800">${day}</h3>${isRecommended ? '<span class="text-xs font-bold bg-emerald-500 text-white py-1 px-2 rounded-full shadow">EAT HERE</span>' : ''}</div>${dishHtml}</div>`;
+                        const calendarLink = generateCalendarLink(day, cafeteria, fullDishDescription);
+                        dailyDishesHtml += `<div class="${cardClasses}"><div class="flex justify-between items-center mb-2"><h3 class="font-semibold text-gray-800">${day}</h3><div class="flex items-center space-x-2">${isRecommended ? '<span class="text-xs font-bold bg-emerald-500 text-white py-1 px-2 rounded-full shadow">EAT HERE</span>' : ''}<a href="${calendarLink}" target="_blank" rel="noopener noreferrer" title="Add to Google Calendar" class="text-gray-400 hover:text-blue-500"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd" /></svg></a></div></div>${dishHtml}</div>`;
                     }
                     dailyDishesHtml += '</div>';
                     column.innerHTML = headerHtml + dailyDishesHtml;
@@ -336,9 +355,10 @@
                 }
 
                 try {
-                    // Step 1: Parse the menu (only if not already cached)
+                    parsedMenuData = loadMenuFromCache();
+
                     if (!parsedMenuData) {
-                        loadingText.textContent = "Analyzing website menu (first time this week)...";
+                        loadingText.textContent = "Analyzing website menu (first time today)...";
                         const siteHtml = await fetchWebsiteContent();
                         if (!siteHtml) {
                             loadingSpinner.classList.add('hidden');
@@ -348,25 +368,12 @@
                         const doc = parser.parseFromString(siteHtml, 'text/html');
                         const menuContainerEl = doc.querySelector('.c-menu__content');
                         const relevantHtml = menuContainerEl ? menuContainerEl.innerHTML : siteHtml;
-
-                        if (!relevantHtml || !relevantHtml.trim()) {
-                            displayError("Menu content is empty or could not be loaded from the source website. The website might be down or has changed its structure.");
-                            return;
-                        }
-
                         parsedMenuData = await parseMenuWithGemini(relevantHtml, GEMINI_API_KEY);
                         if (parsedMenuData) {
-                            saveMenuToCache(parsedMenuData); // Save the new data to cache
+                            saveMenuToCache(parsedMenuData);
                         }
                     }
 
-                    // If parsing failed, parsedMenuData will be null
-                    if (!parsedMenuData) {
-                        displayError("Could not retrieve or parse the menu. Please try again later.");
-                        return;
-                    }
-
-                    // Step 2: Get recommendations based on the (now cached) menu
                     loadingText.textContent = "Getting your recommendations...";
                     const recommendations = await getRecommendationsFromGemini(parsedMenuData, activeKeywords, GEMINI_API_KEY);
                     
