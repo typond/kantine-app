@@ -123,6 +123,7 @@
             const loadingText = document.getElementById('loading-text');
 
             // --- State ---
+            const GEMINI_API_KEY = "AIzaSyBLNBurd4sRjo5dwZF95B-gVYIg36bTvao";
             const API_CALL_LIMIT = 4;
             const defaultKeywords = ['burger', 'flæskesteg', 'thai', 'indian', 'karry', 'curry', 'bolognese', 'moussaka', 'gyudon', 'bao', 'spidsbryst', 'oksekød', 'okse', 'fisk'];
             let keywords = [];
@@ -207,31 +208,40 @@
                 keywordsContainer.innerHTML = keywords.map(keyword => `<label class="flex items-center justify-between space-x-2 p-2 rounded-lg hover:bg-gray-50 cursor-pointer border border-transparent"><div class="flex items-center space-x-2"><input type="checkbox" value="${keyword}" class="keyword-checkbox h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" checked><span class="text-gray-700 capitalize">${keyword}</span></div><button class="delete-keyword-btn text-gray-400 hover:text-red-500" data-keyword="${keyword}" title="Delete keyword"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg></button></label>`).join('');
             }
 
-            /**
-             * Calls our secure Firebase Function instead of Gemini directly.
-             */
-            async function getSecureRecommendations(payload) {
-                const projectId = "kantineprojekt-55d47"; 
-                const functionUrl = `https://us-central1-${projectId}.cloudfunctions.net/getMenuRecommendations`;
-
+            // --- Gemini API Functions ---
+            async function callGemini(prompt, apiKey) {
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+                const payload = { contents: [{ parts: [{ text: prompt }] }] };
                 try {
-                    const response = await fetch(functionUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-
+                    const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                     if (!response.ok) {
                         const errorBody = await response.text();
-                        console.error("Cloud Function Error Response:", errorBody);
-                        throw new Error(`Request to secure function failed with status ${response.status}.`);
+                        console.error("API Error Response:", errorBody);
+                        throw new Error(`API request failed with status ${response.status}.`);
                     }
-                    return await response.json();
+                    const result = await response.json();
+                    if (result.candidates?.[0]?.content?.parts?.[0]) {
+                        let jsonString = result.candidates[0].content.parts[0].text;
+                        jsonString = jsonString.replace(/```json\n/g, '').replace(/```/g, '');
+                        return JSON.parse(jsonString);
+                    } else {
+                        throw new Error("Invalid response structure from Gemini API.");
+                    }
                 } catch (error) {
-                    console.error("Error calling Firebase Function:", error);
+                    console.error("Error calling Gemini API:", error);
                     displayError(error.message);
                     return null;
                 }
+            }
+
+            async function parseMenuWithGemini(siteHtml, apiKey) {
+                const prompt = `You are a menu parsing assistant. Analyze the provided HTML and extract the weekly menu. Return a single JSON object with keys "HUB 1", "HUB 2", "HUB 3", and "Foodcore". For "HUB 1", "HUB 2", and "HUB 3", the value should be an object mapping each day ("Mandag" to "Fredag") to its dish. "HUB 1" is the first main column, "HUB 2" is the second, and "HUB 3" is the "Kays" menu. For "Foodcore", the value should be an object mapping each day to another object containing "Globetrotter" and "Homebound" dishes. Here is the HTML: --- ${siteHtml} ---`;
+                return await callGemini(prompt, apiKey);
+            }
+
+            async function getRecommendationsFromGemini(menuData, activeKeywords, apiKey) {
+                const prompt = `Given the following JSON menu: --- ${JSON.stringify(menuData)} --- And the user's food preferences in order of priority: --- ${activeKeywords} --- Return a JSON object mapping each day ("Mandag" to "Fredag") to the name of the recommended cafeteria. The recommendation should be the first dish found for a day that matches a keyword. If no match is found, the value should be "Any".`;
+                return await callGemini(prompt, apiKey);
             }
             
             function displayError(message) {
@@ -345,7 +355,6 @@
                 }
 
                 try {
-                    let payload = { activeKeywords };
                     parsedMenuData = loadMenuFromCache();
 
                     if (!parsedMenuData) {
@@ -358,23 +367,19 @@
                         const parser = new DOMParser();
                         const doc = parser.parseFromString(siteHtml, 'text/html');
                         const menuContainerEl = doc.querySelector('.c-menu__content');
-                        payload.siteHtml = menuContainerEl ? menuContainerEl.innerHTML : siteHtml;
-                        payload.task = 'parseAndRecommend';
-                    } else {
-                        loadingText.textContent = "Getting your recommendations...";
-                        payload.menuData = parsedMenuData;
-                        payload.task = 'recommendOnly';
+                        const relevantHtml = menuContainerEl ? menuContainerEl.innerHTML : siteHtml;
+                        parsedMenuData = await parseMenuWithGemini(relevantHtml, GEMINI_API_KEY);
+                        if (parsedMenuData) {
+                            saveMenuToCache(parsedMenuData);
+                        }
                     }
 
-                    const result = await getSecureRecommendations(payload);
+                    loadingText.textContent = "Getting your recommendations...";
+                    const recommendations = await getRecommendationsFromGemini(parsedMenuData, activeKeywords, GEMINI_API_KEY);
                     
-                    if (result) {
-                        if (result.menu) {
-                            parsedMenuData = result.menu;
-                            saveMenuToCache(result.menu);
-                        }
+                    if (parsedMenuData && recommendations) {
                         incrementApiCount();
-                        renderMenu(parsedMenuData, result.recommendations);
+                        renderMenu(parsedMenuData, recommendations);
                     }
                 } catch (error) {
                      console.error("Error in process:", error);
