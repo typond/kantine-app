@@ -219,7 +219,7 @@
                     const response = await fetch(functionUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ data: payload }) // Firebase Functions expect a 'data' wrapper
+                        body: JSON.stringify(payload) // With onRequest, we send the payload directly
                     });
 
                     if (!response.ok) {
@@ -227,8 +227,7 @@
                         console.error("Cloud Function Error Response:", errorBody);
                         throw new Error(`Request to secure function failed with status ${response.status}.`);
                     }
-                    const result = await response.json();
-                    return result.result; // Firebase Functions wrap the response in a 'result' object
+                    return await response.json(); // The response is the direct JSON
                 } catch (error) {
                     console.error("Error calling Firebase Function:", error);
                     displayError(error.message);
