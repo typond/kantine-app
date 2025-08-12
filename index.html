@@ -127,7 +127,44 @@
             const API_CALL_LIMIT = 4;
             const defaultKeywords = ['burger', 'flæskesteg', 'thai', 'indian', 'karry', 'curry', 'bolognese', 'moussaka', 'gyudon', 'bao', 'spidsbryst', 'oksekød', 'okse', 'fisk'];
             let keywords = [];
-            let parsedMenuData = null; // Cache for the parsed menu
+
+            // --- Cache Functions ---
+            function getWeekId(date = new Date()) {
+                const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+                d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+                const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+                const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+                return `${d.getUTCFullYear()}-W${weekNo}`;
+            }
+
+            function saveMenuToCache(menuData) {
+                try {
+                    const weekId = getWeekId();
+                    const cacheData = { weekId, menu: menuData };
+                    localStorage.setItem('canteen_menu_cache', JSON.stringify(cacheData));
+                    console.log('Menu saved to cache for week:', weekId);
+                } catch (e) {
+                    console.error("Failed to save menu to cache", e);
+                }
+            }
+
+            function loadMenuFromCache() {
+                const cachedItem = localStorage.getItem('canteen_menu_cache');
+                if (!cachedItem) return null;
+                try {
+                    const data = JSON.parse(cachedItem);
+                    if (data.weekId === getWeekId() && data.menu) {
+                        console.log('Loaded menu from cache for week:', data.weekId);
+                        return data.menu;
+                    }
+                } catch (e) {
+                    console.error('Failed to parse cached menu', e);
+                    localStorage.removeItem('canteen_menu_cache'); // Clear corrupted cache
+                }
+                return null;
+            }
+
+            let parsedMenuData = loadMenuFromCache(); // Load from cache on init
 
             // --- Cookie Functions ---
             function saveCookie(name, value, days) {
@@ -301,7 +338,7 @@
                 try {
                     // Step 1: Parse the menu (only if not already cached)
                     if (!parsedMenuData) {
-                        loadingText.textContent = "Analyzing website menu (first time)...";
+                        loadingText.textContent = "Analyzing website menu (first time this week)...";
                         const siteHtml = await fetchWebsiteContent();
                         if (!siteHtml) {
                             loadingSpinner.classList.add('hidden');
@@ -312,6 +349,15 @@
                         const menuContainerEl = doc.querySelector('.c-menu__content');
                         const relevantHtml = menuContainerEl ? menuContainerEl.innerHTML : siteHtml;
                         parsedMenuData = await parseMenuWithGemini(relevantHtml, GEMINI_API_KEY);
+                        if (parsedMenuData) {
+                            saveMenuToCache(parsedMenuData); // Save the new data to cache
+                        }
+                    }
+
+                    // If parsing failed, parsedMenuData will be null
+                    if (!parsedMenuData) {
+                        displayError("Could not retrieve or parse the menu. Please try again later.");
+                        return;
                     }
 
                     // Step 2: Get recommendations based on the (now cached) menu
