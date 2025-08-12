@@ -101,7 +101,7 @@
         <!-- Loading Spinner -->
         <div id="loading-spinner" class="hidden justify-center items-center h-64">
             <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-emerald-500"></div>
-            <p class="ml-4 text-gray-600">Asking Gemini to read the website and make selections...</p>
+            <p id="loading-text" class="ml-4 text-gray-600">Asking Gemini to read the website...</p>
         </div>
         
         <!-- Error Message Container -->
@@ -120,12 +120,14 @@
             const addKeywordBtn = document.getElementById('add-keyword-btn');
             const newKeywordInput = document.getElementById('new-keyword-input');
             const apiLimitText = document.getElementById('api-limit-text');
+            const loadingText = document.getElementById('loading-text');
 
             // --- State ---
             const GEMINI_API_KEY = "AIzaSyBLNBurd4sRjo5dwZF95B-gVYIg36bTvao";
             const API_CALL_LIMIT = 4;
             const defaultKeywords = ['burger', 'flæskesteg', 'thai', 'indian', 'karry', 'curry', 'bolognese', 'moussaka', 'gyudon', 'bao', 'spidsbryst', 'oksekød', 'okse', 'fisk'];
             let keywords = [];
+            let parsedMenuData = null; // Cache for the parsed menu
 
             // --- Cookie Functions ---
             function saveCookie(name, value, days) {
@@ -154,13 +156,10 @@
             }
 
             function getApiCount() {
-                const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+                const today = new Date().toISOString().split('T')[0];
                 const apiCountData = loadCookie('canteen_api_count');
-
-                if (apiCountData && apiCountData.date === today) {
-                    return apiCountData.count;
-                }
-                return 0; // Reset count if no cookie or date is old
+                if (apiCountData && apiCountData.date === today) return apiCountData.count;
+                return 0;
             }
 
             function incrementApiCount() {
@@ -183,53 +182,37 @@
                 }
             }
 
-
-            /**
-             * Renders the keywords checkboxes and their delete buttons.
-             */
             function renderKeywords() {
-                keywordsContainer.innerHTML = keywords.map(keyword => `
-                    <label class="flex items-center justify-between space-x-2 p-2 rounded-lg hover:bg-gray-50 cursor-pointer border border-transparent">
-                        <div class="flex items-center space-x-2">
-                            <input type="checkbox" value="${keyword}" class="keyword-checkbox h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" checked>
-                            <span class="text-gray-700 capitalize">${keyword}</span>
-                        </div>
-                        <button class="delete-keyword-btn text-gray-400 hover:text-red-500" data-keyword="${keyword}" title="Delete keyword">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-                            </svg>
-                        </button>
-                    </label>
-                `).join('');
+                keywordsContainer.innerHTML = keywords.map(keyword => `<label class="flex items-center justify-between space-x-2 p-2 rounded-lg hover:bg-gray-50 cursor-pointer border border-transparent"><div class="flex items-center space-x-2"><input type="checkbox" value="${keyword}" class="keyword-checkbox h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" checked><span class="text-gray-700 capitalize">${keyword}</span></div><button class="delete-keyword-btn text-gray-400 hover:text-red-500" data-keyword="${keyword}" title="Delete keyword"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg></button></label>`).join('');
             }
 
-            /**
-             * Calls the Gemini API to analyze the website HTML and get both the menu and recommendations.
-             */
-            async function getMenuAndRecommendations(siteHtml, activeKeywords, apiKey) {
+            // --- Gemini API Functions ---
+            async function parseMenuWithGemini(siteHtml, apiKey) {
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-                const prompt = `You are a menu parsing and recommendation assistant. Analyze the provided HTML from the Madkastel Hub Nordic website. Here is the website HTML: --- ${siteHtml} --- Here are the user's food preferences, in order of priority: --- ${activeKeywords} --- Your task is to return a single JSON object with two top-level keys: "menu" and "recommendations". 1. For the "menu" key: The value should be an object with keys "HUB 1", "HUB 2", "HUB 3", and "Foodcore". For "HUB 1", "HUB 2", and "HUB 3", the value should be an object mapping each day ("Mandag" to "Fredag") to its dish. IMPORTANT: "HUB 1" is the first main column. "HUB 2" is the second main column. "HUB 3" is the "Kays" menu. For "Foodcore", the value should be an object mapping each day to another object containing "Globetrotter" and "Homebound" dishes. 2. For the "recommendations" key: The value should be an object mapping each day ("Mandag" to "Fredag") to the name of the recommended cafeteria (e.g., "HUB 1"). The recommendation should be the first dish found for a day that matches a keyword from the user's preferences. If no match is found for a day, the value should be "Any". Ensure the final output is ONLY a valid JSON object.`;
-                const schema = { type: "OBJECT", properties: { "menu": { type: "OBJECT", properties: { "HUB 1": { type: "OBJECT", properties: { "Mandag": { type: "STRING" }, "Tirsdag": { type: "STRING" }, "Onsdag": { type: "STRING" }, "Torsdag": { type: "STRING" }, "Fredag": { type: "STRING" } } }, "HUB 2": { type: "OBJECT", properties: { "Mandag": { type: "STRING" }, "Tirsdag": { type: "STRING" }, "Onsdag": { type: "STRING" }, "Torsdag": { type: "STRING" }, "Fredag": { type: "STRING" } } }, "HUB 3": { type: "OBJECT", properties: { "Mandag": { type: "STRING" }, "Tirsdag": { type: "STRING" }, "Onsdag": { type: "STRING" }, "Torsdag": { type: "STRING" }, "Fredag": { type: "STRING" } } }, "Foodcore": { type: "OBJECT", properties: { "Mandag": { type: "OBJECT", properties: { "Globetrotter": { type: "STRING" }, "Homebound": { type: "STRING" } } }, "Tirsdag": { type: "OBJECT", properties: { "Globetrotter": { type: "STRING" }, "Homebound": { type: "STRING" } } }, "Onsdag": { type: "OBJECT", properties: { "Globetrotter": { type: "STRING" }, "Homebound": { type: "STRING" } } }, "Torsdag": { type: "OBJECT", properties: { "Globetrotter": { type: "STRING" }, "Homebound": { type: "STRING" } } }, "Fredag": { type: "OBJECT", properties: { "Globetrotter": { type: "STRING" }, "Homebound": { type: "STRING" } } } } } } }, "recommendations": { type: "OBJECT", properties: { "Mandag": { type: "STRING" }, "Tirsdag": { type: "STRING" }, "Onsdag": { type: "STRING" }, "Torsdag": { type: "STRING" }, "Fredag": { type: "STRING" } } } } };
+                const prompt = `You are a menu parsing assistant. Analyze the provided HTML and extract the weekly menu. Return a single JSON object with keys "HUB 1", "HUB 2", "HUB 3", and "Foodcore". For "HUB 1", "HUB 2", and "HUB 3", the value should be an object mapping each day ("Mandag" to "Fredag") to its dish. "HUB 1" is the first main column, "HUB 2" is the second, and "HUB 3" is the "Kays" menu. For "Foodcore", the value should be an object mapping each day to another object containing "Globetrotter" and "Homebound" dishes. Here is the HTML: --- ${siteHtml} ---`;
+                const schema = { type: "OBJECT", properties: { "HUB 1": { "$ref": "#/definitions/dailyDishes" }, "HUB 2": { "$ref": "#/definitions/dailyDishes" }, "HUB 3": { "$ref": "#/definitions/dailyDishes" }, "Foodcore": { type: "OBJECT", properties: { "Mandag": { "$ref": "#/definitions/foodcoreDay" }, "Tirsdag": { "$ref": "#/definitions/foodcoreDay" }, "Onsdag": { "$ref": "#/definitions/foodcoreDay" }, "Torsdag": { "$ref": "#/definitions/foodcoreDay" }, "Fredag": { "$ref": "#/definitions/foodcoreDay" } } } }, definitions: { dailyDishes: { type: "OBJECT", properties: { "Mandag": { type: "STRING" }, "Tirsdag": { type: "STRING" }, "Onsdag": { type: "STRING" }, "Torsdag": { type: "STRING" }, "Fredag": { type: "STRING" } } }, foodcoreDay: { type: "OBJECT", properties: { "Globetrotter": { type: "STRING" }, "Homebound": { type: "STRING" } } } } };
                 const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json", responseSchema: schema } };
-
                 try {
                     const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                    if (!response.ok) {
-                         const errorBody = await response.text();
-                         console.error("API Error Response:", errorBody);
-                         throw new Error(`API request failed with status ${response.status}. Please check your API key.`);
-                    }
+                    if (!response.ok) throw new Error(`API request failed with status ${response.status}.`);
                     const result = await response.json();
-                    if (result.candidates?.[0]?.content?.parts?.[0]) {
-                        return JSON.parse(result.candidates[0].content.parts[0].text);
-                    } else { 
-                        throw new Error("Invalid response structure from Gemini API."); 
-                    }
-                } catch (error) {
-                    console.error("Error calling Gemini API:", error);
-                    displayError(error.message);
-                    return null;
-                }
+                    if (result.candidates?.[0]?.content?.parts?.[0]) return JSON.parse(result.candidates[0].content.parts[0].text);
+                    else throw new Error("Invalid response structure from Gemini API.");
+                } catch (error) { throw error; }
+            }
+
+            async function getRecommendationsFromGemini(menuData, activeKeywords, apiKey) {
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+                const prompt = `Given the following JSON menu: --- ${JSON.stringify(menuData)} --- And the user's food preferences in order of priority: --- ${activeKeywords} --- Return a JSON object mapping each day ("Mandag" to "Fredag") to the name of the recommended cafeteria. The recommendation should be the first dish found for a day that matches a keyword. If no match is found, the value should be "Any".`;
+                const schema = { type: "OBJECT", properties: { "Mandag": { type: "STRING" }, "Tirsdag": { type: "STRING" }, "Onsdag": { type: "STRING" }, "Torsdag": { type: "STRING" }, "Fredag": { type: "STRING" } } };
+                const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json", responseSchema: schema } };
+                 try {
+                    const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    if (!response.ok) throw new Error(`API request failed with status ${response.status}.`);
+                    const result = await response.json();
+                    if (result.candidates?.[0]?.content?.parts?.[0]) return JSON.parse(result.candidates[0].content.parts[0].text);
+                    else throw new Error("Invalid response structure from Gemini API.");
+                } catch (error) { throw error; }
             }
             
             function displayError(message) {
@@ -242,38 +225,30 @@
                 loadingSpinner.classList.add('hidden');
                 menuContainer.innerHTML = '';
                 menuContainer.classList.remove('hidden');
-
                 const cafeteriaOrder = ["HUB 1", "HUB 2", "HUB 3", "Foodcore"];
                 const daysOrder = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag"];
-
                 for (const cafeteria of cafeteriaOrder) {
                     const cafeteriaMenu = menuData[cafeteria];
                     if (!cafeteriaMenu) continue;
-
                     const column = document.createElement('div');
                     column.className = 'bg-white rounded-xl shadow-md overflow-hidden flex flex-col';
-                    
                     let headerHtml = `<div class="p-4 bg-gray-100 border-b border-gray-200"><h2 class="text-xl font-bold text-center text-gray-700">${cafeteria}</h2></div>`;
-                    
                     let dailyDishesHtml = '<div class="p-5 flex-grow">';
                     for (const day of daysOrder) {
                         const isRecommended = recommendations[day] === cafeteria;
                         const dishEntry = cafeteriaMenu[day];
                         if (!dishEntry) continue;
-
                         const cardClasses = `p-4 rounded-lg border-2 day-dish ${isRecommended ? 'highlight-dish' : 'bg-white border-transparent'}`;
-                        
                         let dishHtml = '';
                         if (typeof dishEntry === 'string') {
                             dishHtml = `<p class="text-gray-600">${dishEntry}</p>`;
-                        } else { // Foodcore
+                        } else {
                             dishHtml = '<div>';
                             for (const subKitchen in dishEntry) {
                                 dishHtml += `<div class="mb-2 last:mb-0"><h4 class="font-medium text-gray-700">${subKitchen}</h4><p class="text-gray-600">${dishEntry[subKitchen]}</p></div>`;
                             }
                             dishHtml += '</div>';
                         }
-                        
                         dailyDishesHtml += `<div class="${cardClasses}"><div class="flex justify-between items-center mb-2"><h3 class="font-semibold text-gray-800">${day}</h3>${isRecommended ? '<span class="text-xs font-bold bg-emerald-500 text-white py-1 px-2 rounded-full shadow">EAT HERE</span>' : ''}</div>${dishHtml}</div>`;
                     }
                     dailyDishesHtml += '</div>';
@@ -323,20 +298,36 @@
                     return;
                 }
 
-                const siteHtml = await fetchWebsiteContent();
-                if (siteHtml) {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(siteHtml, 'text/html');
-                    const menuContainerEl = doc.querySelector('.c-menu__content');
-                    const relevantHtml = menuContainerEl ? menuContainerEl.innerHTML : siteHtml;
-
-                    const result = await getMenuAndRecommendations(relevantHtml, activeKeywords, GEMINI_API_KEY);
-                    if (result) {
-                        incrementApiCount();
-                        renderMenu(result.menu, result.recommendations);
+                try {
+                    // Step 1: Parse the menu (only if not already cached)
+                    if (!parsedMenuData) {
+                        loadingText.textContent = "Analyzing website menu (first time)...";
+                        const siteHtml = await fetchWebsiteContent();
+                        if (!siteHtml) {
+                            loadingSpinner.classList.add('hidden');
+                            return;
+                        }
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(siteHtml, 'text/html');
+                        const menuContainerEl = doc.querySelector('.c-menu__content');
+                        const relevantHtml = menuContainerEl ? menuContainerEl.innerHTML : siteHtml;
+                        parsedMenuData = await parseMenuWithGemini(relevantHtml, GEMINI_API_KEY);
                     }
+
+                    // Step 2: Get recommendations based on the (now cached) menu
+                    loadingText.textContent = "Getting your recommendations...";
+                    const recommendations = await getRecommendationsFromGemini(parsedMenuData, activeKeywords, GEMINI_API_KEY);
+                    
+                    if (parsedMenuData && recommendations) {
+                        incrementApiCount();
+                        renderMenu(parsedMenuData, recommendations);
+                    }
+                } catch (error) {
+                     console.error("Error in process:", error);
+                     displayError(error.message);
+                } finally {
+                    loadingSpinner.classList.add('hidden');
                 }
-                loadingSpinner.classList.add('hidden');
             });
 
             addKeywordBtn.addEventListener('click', () => {
