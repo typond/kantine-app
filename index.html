@@ -211,7 +211,6 @@
              * Calls our secure Firebase Function instead of Gemini directly.
              */
             async function getSecureRecommendations(payload) {
-                // Replace with your actual Firebase project ID
                 const projectId = "kantineprojekt-55d47"; 
                 const functionUrl = `https://us-central1-${projectId}.cloudfunctions.net/getMenuRecommendations`;
 
@@ -219,7 +218,7 @@
                     const response = await fetch(functionUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload) // With onRequest, we send the payload directly
+                        body: JSON.stringify(payload)
                     });
 
                     if (!response.ok) {
@@ -227,7 +226,7 @@
                         console.error("Cloud Function Error Response:", errorBody);
                         throw new Error(`Request to secure function failed with status ${response.status}.`);
                     }
-                    return await response.json(); // The response is the direct JSON
+                    return await response.json();
                 } catch (error) {
                     console.error("Error calling Firebase Function:", error);
                     displayError(error.message);
