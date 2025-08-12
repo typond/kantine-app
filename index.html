@@ -348,6 +348,12 @@
                         const doc = parser.parseFromString(siteHtml, 'text/html');
                         const menuContainerEl = doc.querySelector('.c-menu__content');
                         const relevantHtml = menuContainerEl ? menuContainerEl.innerHTML : siteHtml;
+
+                        if (!relevantHtml || !relevantHtml.trim()) {
+                            displayError("Menu content is empty or could not be loaded from the source website. The website might be down or has changed its structure.");
+                            return;
+                        }
+
                         parsedMenuData = await parseMenuWithGemini(relevantHtml, GEMINI_API_KEY);
                         if (parsedMenuData) {
                             saveMenuToCache(parsedMenuData); // Save the new data to cache
