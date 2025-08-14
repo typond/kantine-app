@@ -419,6 +419,13 @@
                 }
             });
 
+            newKeywordInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addKeywordBtn.click();
+                }
+            });
+
             keywordsContainer.addEventListener('click', (e) => {
                 const deleteBtn = e.target.closest('.delete-keyword-btn');
                 if (deleteBtn) {
