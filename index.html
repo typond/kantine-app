@@ -62,6 +62,11 @@
                 </div>
             </div>
             <div id="current-week" class="text-right text-gray-500 text-sm md:text-base font-medium"></div>
+            <button id="add-menu-btn" class="bg-white p-2 rounded-full text-gray-500 hover:text-emerald-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+            </button>
         </header>
 
         <!-- Main controls -->
@@ -107,6 +112,39 @@
         <!-- Error Message Container -->
         <div id="error-container" class="hidden"></div>
 
+        <!-- Add Menu Modal -->
+        <div id="add-menu-modal" class="hidden fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center p-4 z-50">
+            <div id="modal-content" class="bg-white rounded-xl shadow-2xl p-8 max-w-lg w-full transform transition-all">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800">Tilføj Nyt Menukort</h2>
+                    <button id="close-modal-btn" class="text-gray-400 hover:text-gray-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+                <div id="modal-initial-view">
+                    <p class="text-gray-600 mb-6">Start med at finde spisesteder i nærheden af dig for at tilføje et nyt menukort.</p>
+                    <button id="find-nearby-btn" class="w-full bg-emerald-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm flex items-center justify-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd" />
+                        </svg>
+                        Find i nærheden
+                    </button>
+                </div>
+                <div id="modal-loading-view" class="hidden text-center py-8">
+                     <div class="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-emerald-500 mx-auto"></div>
+                     <p id="modal-loading-text" class="mt-4 text-gray-600">Henter din position...</p>
+                </div>
+                <div id="modal-places-view" class="hidden">
+                    <p class="text-gray-600 mb-4">Vælg et sted fra listen for at fortsætte.</p>
+                    <div id="places-list" class="space-y-2 max-h-64 overflow-y-auto">
+                        <!-- Nearby places will be injected here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <script>
@@ -121,6 +159,18 @@
             const newKeywordInput = document.getElementById('new-keyword-input');
             const apiLimitText = document.getElementById('api-limit-text');
             const loadingText = document.getElementById('loading-text');
+
+            // Modal elements
+            const addMenuBtn = document.getElementById('add-menu-btn');
+            const addMenuModal = document.getElementById('add-menu-modal');
+            const closeModalBtn = document.getElementById('close-modal-btn');
+            const findNearbyBtn = document.getElementById('find-nearby-btn');
+            const modalInitialView = document.getElementById('modal-initial-view');
+            const modalLoadingView = document.getElementById('modal-loading-view');
+            const modalLoadingText = document.getElementById('modal-loading-text');
+            const modalPlacesView = document.getElementById('modal-places-view');
+            const placesList = document.getElementById('places-list');
+
 
             // --- State ---
             const GEMINI_API_KEY = "AIzaSyBLNBurd4sRjo5dwZF95B-gVYIg36bTvao";
@@ -291,6 +341,36 @@
                 return `${baseUrl}&text=${title}&dates=${dates}&details=${details}&location=${location}`;
             }
 
+            function addNewMenuCard(placeName) {
+                const newMenu = {
+                    "Mandag": "AI-Generated Pizza",
+                    "Tirsdag": "Robo-Tacos",
+                    "Onsdag": "Synthesized Soup",
+                    "Torsdag": "Neural Net Noodles",
+                    "Fredag": "Cyborg's Choice Salad"
+                };
+                const daysOrder = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag"];
+
+                const column = document.createElement('div');
+                column.className = 'bg-white rounded-xl shadow-md overflow-hidden flex flex-col border-4 border-emerald-400'; // Highlight new card
+
+                let headerHtml = `<div class="p-4 bg-gray-100 border-b border-gray-200"><h2 class="text-xl font-bold text-center text-gray-700">(Nyt) ${placeName}</h2></div>`;
+                let dailyDishesHtml = '<div class="p-5 flex-grow">';
+
+                for (const day of daysOrder) {
+                    const dish = newMenu[day];
+                    const cardClasses = `p-4 rounded-lg border-2 day-dish bg-white border-transparent`;
+                    dailyDishesHtml += `<div class="${cardClasses}"><div class="flex justify-between items-center mb-2"><h3 class="font-semibold text-gray-800">${day}</h3></div><p class="text-gray-600">${dish}</p></div>`;
+                }
+                dailyDishesHtml += '</div>';
+                column.innerHTML = headerHtml + dailyDishesHtml;
+
+                if (menuContainer.classList.contains('hidden')) {
+                    menuContainer.classList.remove('hidden');
+                }
+                menuContainer.prepend(column);
+            }
+
             function renderMenu(menuData, recommendations) {
                 loadingSpinner.classList.add('hidden');
                 menuContainer.innerHTML = '';
@@ -355,7 +435,92 @@
                 document.getElementById('current-week').textContent = `Uge ${weekNumber}`;
             }
 
+            // --- Modal Logic ---
+            function openModal() {
+                addMenuModal.classList.remove('hidden');
+            }
+
+            function closeModal() {
+                addMenuModal.classList.add('hidden');
+                // Reset to initial view
+                modalInitialView.classList.remove('hidden');
+                modalLoadingView.classList.add('hidden');
+                modalPlacesView.classList.add('hidden');
+            }
+
             // --- Event Listeners ---
+            addMenuBtn.addEventListener('click', openModal);
+            closeModalBtn.addEventListener('click', closeModal);
+
+            addMenuModal.addEventListener('click', (e) => {
+                if (e.target === addMenuModal) {
+                    closeModal();
+                }
+            });
+
+            findNearbyBtn.addEventListener('click', () => {
+                modalInitialView.classList.add('hidden');
+                modalLoadingView.classList.remove('hidden');
+                modalLoadingText.textContent = 'Henter din position...';
+
+                if (!navigator.geolocation) {
+                    modalLoadingText.textContent = 'Geolocation is not supported by your browser.';
+                    // Maybe switch back to initial view after a delay
+                    return;
+                }
+
+                const success = (position) => {
+                    // Simulate API call to get nearby places
+                    setTimeout(() => {
+                        const mockPlaces = [
+                            { name: 'Pizza Palace', address: '123 Main St' },
+                            { name: 'Burger Barn', address: '456 Oak Ave' },
+                            { name: 'Sushi Central', address: '789 Pine Ln' },
+                            { name: 'Taco Town', address: '101 Maple Dr' },
+                        ];
+
+                        placesList.innerHTML = ''; // Clear previous list
+                        mockPlaces.forEach(place => {
+                            const placeElement = document.createElement('div');
+                            placeElement.className = 'p-4 border rounded-lg hover:bg-gray-100 cursor-pointer';
+                            placeElement.textContent = `${place.name} - ${place.address}`;
+                            placeElement.dataset.placeName = place.name;
+                            placesList.appendChild(placeElement);
+                        });
+
+                        modalLoadingView.classList.add('hidden');
+                        modalPlacesView.classList.remove('hidden');
+                    }, 1500); // Simulate network delay
+                };
+
+                const error = () => {
+                    modalLoadingText.textContent = 'Unable to retrieve your location. Please allow location access.';
+                     setTimeout(() => {
+                        modalLoadingView.classList.add('hidden');
+                        modalInitialView.classList.remove('hidden');
+                    }, 3000);
+                };
+
+                navigator.geolocation.getCurrentPosition(success, error);
+            });
+
+            placesList.addEventListener('click', (e) => {
+                const selectedPlace = e.target.closest('[data-place-name]');
+                if (!selectedPlace) return;
+
+                const placeName = selectedPlace.dataset.placeName;
+
+                modalPlacesView.classList.add('hidden');
+                modalLoadingView.classList.remove('hidden');
+                modalLoadingText.textContent = `Menukortet fra "${placeName}" sendes til Gemini for analyse...`;
+
+                // This is where the next step will be triggered from
+                setTimeout(() => {
+                    addNewMenuCard(placeName);
+                    closeModal();
+                }, 2500);
+            });
+
             processBtn.addEventListener('click', async () => {
                 const apiCallCount = getApiCount();
                 if (apiCallCount >= API_CALL_LIMIT) {
