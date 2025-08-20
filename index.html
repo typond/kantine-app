@@ -349,10 +349,25 @@
 
             function setCurrentWeek() {
                 const now = new Date();
-                const startOfYear = new Date(now.getFullYear(), 0, 1);
-                const pastDaysOfYear = (now.getTime() - startOfYear.getTime()) / 86400000;
-                const weekNumber = Math.ceil((pastDaysOfYear + startOfYear.getDay() + 1) / 7);
-                document.getElementById('current-week').textContent = `Uge ${weekNumber}`;
+                const currentDay = now.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
+
+                const monday = new Date(now);
+                // If current day is Sunday (0), we need to go back 6 days to get to Monday.
+                // Otherwise, go back (currentDay - 1) days.
+                const diffToMonday = currentDay === 0 ? -6 : 1 - currentDay;
+                monday.setDate(now.getDate() + diffToMonday);
+
+                const friday = new Date(monday);
+                friday.setDate(monday.getDate() + 4); // The menu is for Monday to Friday
+
+                // Use a Danish locale for formatting the date.
+                const options = { month: 'long', day: 'numeric' };
+                const dateFormatter = new Intl.DateTimeFormat('da-DK', options);
+
+                const startDate = dateFormatter.format(monday);
+                const endDate = dateFormatter.format(friday);
+
+                document.getElementById('current-week').textContent = `${startDate} - ${endDate}`;
             }
 
             // --- Event Listeners ---
