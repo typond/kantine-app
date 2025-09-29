@@ -242,7 +242,7 @@
 
             // --- Gemini API Functions ---
             async function callGemini(prompt, apiKey) {
-                const apiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+                const apiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
                 const payload = { contents: [{ parts: [{ text: prompt }] }] };
                 
                 let retries = 3;
