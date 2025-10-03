@@ -46,6 +46,117 @@
         details[open] summary .arrow-down {
             transform: rotate(180deg);
         }
+        
+        /* Auto-hide transitions */
+        details {
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
+        }
+        
+        details:not([open]) {
+            opacity: 0.8;
+            transform: scale(0.98);
+        }
+        
+        details[open] {
+            opacity: 1;
+            transform: scale(1);
+        }
+        
+        details summary {
+            transition: all 0.3s ease-in-out;
+        }
+        
+        details summary:hover {
+            background-color: rgba(59, 130, 246, 0.05);
+            border-radius: 8px;
+            padding: 4px;
+            margin: -4px;
+        }
+        
+        .auto-collapse {
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        /* Subtle pulse animation for the filter section when collapsed */
+        @keyframes filterPulse {
+            0%, 100% { 
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.3);
+            }
+            50% { 
+                box-shadow: 0 0 0 8px rgba(16, 185, 129, 0.1);
+            }
+        }
+        
+        details:not([open]) summary {
+            animation: filterPulse 3s ease-in-out infinite;
+        }
+        
+        /* Rocket animations */
+        .rocket-icon {
+            transition: all 0.3s ease;
+            transform-origin: center;
+        }
+        
+        .rocket-icon:hover {
+            transform: translateY(-2px) scale(1.1);
+        }
+        
+        .rocket-icon.active {
+            color: #ff6b6b !important;
+            animation: rocketBoost 1s ease-in-out infinite alternate;
+        }
+        
+        .rocket-icon.active:hover {
+            transform: translateY(-3px) scale(1.15);
+        }
+        
+        @keyframes rocketBoost {
+            0% { transform: translateY(0) scale(1); }
+            100% { transform: translateY(-1px) scale(1.05); }
+        }
+        
+        /* Smoke animation */
+        .smoke-effect {
+            position: relative;
+        }
+        
+        .smoke-effect::after {
+            content: '';
+            position: absolute;
+            top: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-image: 
+                radial-gradient(circle at 30% 30%, rgba(150,150,150,0.8) 20%, transparent 20%),
+                radial-gradient(circle at 70% 70%, rgba(120,120,120,0.6) 25%, transparent 25%),
+                radial-gradient(circle at 50% 50%, rgba(100,100,100,0.4) 30%, transparent 30%);
+            opacity: 0;
+            animation: smokeRise 2s ease-in-out infinite;
+            z-index: 10;
+        }
+        
+        .rocket-icon.active + .smoke-effect::after {
+            opacity: 1;
+        }
+        
+        @keyframes smokeRise {
+            0% { 
+                opacity: 0.8;
+                transform: translateX(-50%) translateY(0) scale(0.8);
+            }
+            50% { 
+                opacity: 0.6;
+                transform: translateX(-50%) translateY(-8px) scale(1.2);
+            }
+            100% { 
+                opacity: 0;
+                transform: translateX(-50%) translateY(-16px) scale(1.5);
+            }
+        }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -150,6 +261,7 @@
             const suggestionsContainer = document.getElementById('suggestions-container');
             const closeModalBtn = document.getElementById('close-modal-btn');
             const addSuggestionsBtn = document.getElementById('add-suggestions-btn');
+            const filterDetails = document.querySelector('details'); // Filter preferences details element
 
             // --- State ---
             // IMPORTANT: The app credential is obfuscated to deter casual snooping.
@@ -162,6 +274,91 @@
             let keywords = [];
             let favorites = []; // In-memory favorites cache
             let parsedMenuData = null; // In-memory cache for the session
+            
+            // Auto-hide functionality
+            let collapseTimeout = null;
+            
+            function autoCollapseFilters() {
+                if (filterDetails) {
+                    // Clear any existing timeout
+                    if (collapseTimeout) {
+                        clearTimeout(collapseTimeout);
+                    }
+                    
+                    // Set new collapse timeout
+                    collapseTimeout = setTimeout(() => {
+                        if (filterDetails.open) {
+                            filterDetails.classList.add('auto-collapse');
+                            filterDetails.open = false;
+                            
+                            // Remove the class after animation completes
+                            setTimeout(() => {
+                                filterDetails.classList.remove('auto-collapse');
+                            }, 400);
+                        }
+                    }, 1500); // Collapse after 1.5 second delay
+                }
+            }
+            
+            function autoExpandFilters() {
+                if (filterDetails) {
+                    // Clear any pending collapse
+                    if (collapseTimeout) {
+                        clearTimeout(collapseTimeout);
+                        collapseTimeout = null;
+                    }
+                    
+                    if (!filterDetails.open) {
+                        filterDetails.classList.add('auto-collapse');
+                        filterDetails.open = true;
+                        
+                        // Remove the class after animation completes
+                        setTimeout(() => {
+                            filterDetails.classList.remove('auto-collapse');
+                        }, 400);
+                    }
+                }
+            
+            }
+            
+            function addAutoHideListeners() {
+                // Listen for keyword interactions to auto-expand
+                if (keywordsContainer) {
+                    keywordsContainer.addEventListener('click', () => {
+                        autoExpandFilters();
+                    });
+                }
+                
+                if (newKeywordInput) {
+                    newKeywordInput.addEventListener('focus', () => {
+                        autoExpandFilters();
+                    });
+                    
+                    newKeywordInput.addEventListener('input', () => {
+                        autoExpandFilters();
+                    });
+                    
+                    newKeywordInput.addEventListener('keydown', () => {
+                        autoExpandFilters();
+                    });
+                }
+                
+                if (addKeywordBtn) {
+                    addKeywordBtn.addEventListener('click', () => {
+                        autoExpandFilters();
+                    });
+                }
+                
+                // Auto-expand when suggestion modal is shown
+                window.addEventListener('suggestionModalShown', () => {
+                    autoExpandFilters();
+                });
+                
+                // Auto-expand when there are empty preferences
+                if (keywords.length === 0) {
+                    autoExpandFilters();
+                }
+            }
 
             // --- Cookie & Cache Functions ---
             function saveCookie(name, value, days) {
@@ -241,7 +438,7 @@
             function renderKeywords() {
                 keywordsContainer.innerHTML = keywords.map(keyword => {
                     const isFav = favorites.includes(keyword);
-                    return `<label class="flex items-center justify-between space-x-2 p-2 rounded-lg hover:bg-gray-50 cursor-pointer border border-transparent"><div class="flex items-center space-x-2"><input type="checkbox" value="${keyword}" class="keyword-checkbox h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" checked><span class="text-gray-700 capitalize">${keyword}</span></div><div class="flex items-center space-x-2"><button class="favorite-keyword-btn text-gray-300 hover:text-red-400" data-keyword="${keyword}" title="Mark as favorite"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="h-5 w-5 ${isFav ? 'text-red-500' : 'text-gray-300'}" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 6 4 4 6.5 4c1.74 0 3.41 1.01 4.22 2.53C11.09 5.01 12.76 4 14.5 4 17 4 19 6 19 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></button><button class="delete-keyword-btn text-gray-400 hover:text-red-500" data-keyword="${keyword}" title="Delete keyword"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg></button></div></label>`;
+                    return `<label class="flex items-center justify-between space-x-2 p-2 rounded-lg hover:bg-gray-50 cursor-pointer border border-transparent"><div class="flex items-center space-x-2"><input type="checkbox" value="${keyword}" class="keyword-checkbox h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" checked><span class="text-gray-700 capitalize">${keyword}</span></div><div class="flex items-center space-x-2"><div class="relative"><button class="rocket-favorite-btn text-gray-300 hover:text-orange-400" data-keyword="${keyword}" title="Launch as favorite"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="rocket-icon h-5 w-5 ${isFav ? 'active text-orange-500' : 'text-gray-300'}" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2zm0 2.44L10.5 8.5h3L12 4.44zm-1.5 5.06L12 15l1.5-5.5h-3z"/></svg><div class="smoke-effect"></div></div><button class="delete-keyword-btn text-gray-400 hover:text-red-500" data-keyword="${keyword}" title="Delete keyword"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg></button></div></label>`;
                 }).join('');
             }
 
@@ -544,6 +741,9 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
                             </label>
                         `).join('');
                         suggestionModal.classList.remove('hidden');
+                        
+                        // Trigger custom event to auto-expand filters
+                        window.dispatchEvent(new CustomEvent('suggestionModalShown'));
                     }
                 }
             }
@@ -593,6 +793,9 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
                     if (parsedMenuData && recommendations) {
                         incrementApiCount();
                         renderMenu(parsedMenuData, recommendations);
+                        
+                        // Auto-hide filter preferences after successful menu display
+                        autoCollapseFilters();
 
                         const daysWithNoMatch = Object.keys(recommendations).filter(day => recommendations[day] === 'Any');
                         if (daysWithNoMatch.length > 0) {
@@ -636,7 +839,7 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
                     return;
                 }
 
-                const favBtn = e.target.closest('.favorite-keyword-btn');
+                const favBtn = e.target.closest('.rocket-favorite-btn');
                 if (favBtn) {
                     const kw = favBtn.dataset.keyword;
                     if (favorites.includes(kw)) {
@@ -678,6 +881,9 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
             renderKeywords();
             setCurrentWeek();
             updateApiLimitText();
+            
+            // Set up auto-hide functionality
+            addAutoHideListeners();
         });
     </script>
 </body>
