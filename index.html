@@ -160,6 +160,7 @@
             const API_CALL_LIMIT = 4;
             const defaultKeywords = ['fjerkræ', 'flæskesteg', 'thai', 'indisk', 'karry', 'curry', 'bolognese', 'moussaka', 'gyudon', 'bao', 'spidsbryst', 'okse', 'fisk'];
             let keywords = [];
+            let favorites = []; // In-memory favorites cache
             let parsedMenuData = null; // In-memory cache for the session
 
             // --- Cookie & Cache Functions ---
@@ -238,7 +239,10 @@
             }
 
             function renderKeywords() {
-                keywordsContainer.innerHTML = keywords.map(keyword => `<label class="flex items-center justify-between space-x-2 p-2 rounded-lg hover:bg-gray-50 cursor-pointer border border-transparent"><div class="flex items-center space-x-2"><input type="checkbox" value="${keyword}" class="keyword-checkbox h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" checked><span class="text-gray-700 capitalize">${keyword}</span></div><button class="delete-keyword-btn text-gray-400 hover:text-red-500" data-keyword="${keyword}" title="Delete keyword"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg></button></label>`).join('');
+                keywordsContainer.innerHTML = keywords.map(keyword => {
+                    const isFav = favorites.includes(keyword);
+                    return `<label class="flex items-center justify-between space-x-2 p-2 rounded-lg hover:bg-gray-50 cursor-pointer border border-transparent"><div class="flex items-center space-x-2"><input type="checkbox" value="${keyword}" class="keyword-checkbox h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" checked><span class="text-gray-700 capitalize">${keyword}</span></div><div class="flex items-center space-x-2"><button class="favorite-keyword-btn text-gray-300 hover:text-red-400" data-keyword="${keyword}" title="Mark as favorite"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="h-5 w-5 ${isFav ? 'text-red-500' : 'text-gray-300'}" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 6 4 4 6.5 4c1.74 0 3.41 1.01 4.22 2.53C11.09 5.01 12.76 4 14.5 4 17 4 19 6 19 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></button><button class="delete-keyword-btn text-gray-400 hover:text-red-500" data-keyword="${keyword}" title="Delete keyword"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg></button></div></label>`;
+                }).join('');
             }
 
             // --- Gemini API Functions ---
@@ -315,7 +319,7 @@ HTML: ${siteHtml}`;
                 return await callGemini(prompt, apiKey);
             }
 
-            async function getRecommendationsFromGemini(menuData, activeKeywords, apiKey) {
+            async function getRecommendationsFromGemini(menuData, activeKeywords, activeFavoriteKeywords, apiKey) {
                 const prompt = `
 You are a helpful assistant for a canteen menu app matching Danish/English food preferences to cafeteria dishes. Your task is to recommend a cafeteria for each day of the week (Mandag-Fredag) based on semantic-aware user preferences.
 
@@ -352,6 +356,9 @@ ${JSON.stringify(menuData, null, 2)}
 **User Preferences (Keywords):**
 ${activeKeywords}
 
+**Favorite Preferences (Active Only):**
+${activeFavoriteKeywords}
+
 **Matching Rules:**
 1. Normalize all text (lowercase, ignore diacritics) for Danish and English
 2. A preference matches a dish if there is:
@@ -359,6 +366,7 @@ ${activeKeywords}
    - Synonym/category match via SynonymMap: +2 points  
    - Cuisine/style match via SynonymMap: +1 point
 3. Sum scores per dish. Choose cafeteria with highest score per day.
+3.5. If dish matches any in Favorite Preferences (Active Only): +2 bonus
 4. If user has "vegetar"/"vegansk", exclude meat/fish dishes unless explicitly marked vegetarian/vegan.
 5. If all scores <2 for a day, return "Any"
 6. On ties, prefer explicit mentions over generic categories
@@ -558,6 +566,8 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
                     return;
                 }
 
+                const activeFavoriteKeywords = favorites.filter(k => activeKeywords.includes(k)).join(', ');
+
                 try {
                     parsedMenuData = loadMenuFromCache();
 
@@ -578,7 +588,7 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
                     }
 
                     loadingText.textContent = "Getting your recommendations...";
-                    const recommendations = await getRecommendationsFromGemini(parsedMenuData, activeKeywords, appToken);
+                    const recommendations = await getRecommendationsFromGemini(parsedMenuData, activeKeywords, activeFavoriteKeywords, appToken);
                     
                     if (parsedMenuData && recommendations) {
                         incrementApiCount();
@@ -619,7 +629,22 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
                 if (deleteBtn) {
                     const keywordToDelete = deleteBtn.dataset.keyword;
                     keywords = keywords.filter(k => k !== keywordToDelete);
+                    favorites = favorites.filter(k => k !== keywordToDelete);
                     saveCookie('canteen_keywords', keywords, 365);
+                    saveCookie('canteen_favorite_keywords', favorites, 365);
+                    renderKeywords();
+                    return;
+                }
+
+                const favBtn = e.target.closest('.favorite-keyword-btn');
+                if (favBtn) {
+                    const kw = favBtn.dataset.keyword;
+                    if (favorites.includes(kw)) {
+                        favorites = favorites.filter(k => k !== kw);
+                    } else {
+                        favorites.push(kw);
+                    }
+                    saveCookie('canteen_favorite_keywords', favorites, 365);
                     renderKeywords();
                 }
             });
@@ -646,6 +671,9 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
             // --- Initial Setup ---
             const savedKeywords = loadCookie('canteen_keywords');
             keywords = Array.isArray(savedKeywords) && savedKeywords.length > 0 ? savedKeywords : defaultKeywords;
+            
+            const savedFavorites = loadCookie('canteen_favorite_keywords');
+            favorites = Array.isArray(savedFavorites) ? savedFavorites : [];
             
             renderKeywords();
             setCurrentWeek();
