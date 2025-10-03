@@ -316,9 +316,37 @@ HTML: ${siteHtml}`;
             }
 
             async function getRecommendationsFromGemini(menuData, activeKeywords, apiKey) {
-                const prompt = `Menu: ${JSON.stringify(menuData)}
-Preferences: ${activeKeywords}
-Return JSON mapping days (Mandag-Fredag) to cafeteria name. Use "Any" if no match.`;
+                const prompt = `
+You are a helpful assistant for a canteen menu app. Your task is to recommend a cafeteria for each day of the week (Mandag-Fredag) based on user preferences.
+
+Analyze the provided weekly menu and the user's selected keywords.
+
+**Menu Data:**
+${JSON.stringify(menuData, null, 2)}
+
+**User Preferences (Keywords):**
+${activeKeywords}
+
+**Instructions:**
+1.  For each day ("Mandag", "Tirsdag", etc.), examine the dishes in all cafeterias ("HUB 1", "HUB 2", "HUB 3", "Foodcore").
+2.  Compare the dish descriptions with the user's preference keywords.
+3.  A match occurs if a keyword is present in the dish name or description. Also, consider related terms (e.g., 'pork' for 'flæskesteg', 'beef' for 'oksekød').
+4.  If multiple cafeterias match for a given day, prioritize the one that seems like a stronger or more direct match.
+5.  If a dish is explicitly labeled "Vegetar", it should match a "vegetarian" or "vegetar" preference.
+6.  Your primary goal is to find the single best cafeteria for each day.
+7.  If NO cafeteria matches the preferences for a specific day, you MUST return "Any" for that day. Do not invent a match.
+
+**Output Format:**
+Return a single JSON object mapping each day of the week to the recommended cafeteria.
+Example:
+{
+  "Mandag": "HUB 1",
+  "Tirsdag": "Foodcore",
+  "Onsdag": "Any",
+  "Torsdag": "HUB 2",
+  "Fredag": "HUB 1"
+}
+`;
                 return await callGemini(prompt, apiKey);
             }
 
