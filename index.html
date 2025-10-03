@@ -74,7 +74,7 @@
                     </svg>
                 </summary>
                 <div class="mt-4 border-t pt-4">
-                    <p class="text-gray-500 mb-4">Select, add, or remove keywords for your recommendations. Changes are saved automatically.</p>
+                    <p class="text-gray-500 mb-4">Select, add, or remove keywords for your recommendations. The system uses semantic matching to understand related terms (e.g., "høne" matches "kylling"). Changes are saved automatically.</p>
                     <div id="keywords-container" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-x-4 gap-y-3">
                         <!-- Checkboxes will be dynamically inserted here -->
                     </div>
@@ -158,7 +158,7 @@
             const encodedData = "QUl6YVN5QkxOQnVyZDRzUmpvNWR3WkY5NUItZ1ZZSWczNmJUdmFv";
             const appToken = atob(encodedData); // Decode the token for use
             const API_CALL_LIMIT = 4;
-            const defaultKeywords = ['burger', 'flæskesteg', 'thai', 'indian', 'karry', 'curry', 'bolognese', 'moussaka', 'gyudon', 'bao', 'spidsbryst', 'oksekød', 'okse', 'fisk'];
+            const defaultKeywords = ['fjerkræ', 'flæskesteg', 'thai', 'indisk', 'karry', 'curry', 'bolognese', 'moussaka', 'gyudon', 'bao', 'spidsbryst', 'okse', 'fisk'];
             let keywords = [];
             let parsedMenuData = null; // In-memory cache for the session
 
@@ -317,9 +317,34 @@ HTML: ${siteHtml}`;
 
             async function getRecommendationsFromGemini(menuData, activeKeywords, apiKey) {
                 const prompt = `
-You are a helpful assistant for a canteen menu app. Your task is to recommend a cafeteria for each day of the week (Mandag-Fredag) based on user preferences.
+You are a helpful assistant for a canteen menu app matching Danish/English food preferences to cafeteria dishes. Your task is to recommend a cafeteria for each day of the week (Mandag-Fredag) based on semantic-aware user preferences.
 
-Analyze the provided weekly menu and the user's selected keywords.
+**SynonymMap for Semantic Matching:**
+{
+  "protein": {
+    "fjerkræ": ["kylling", "høne", "hane", "kalkun", "chicken", "poultry"],
+    "okse": ["okse", "oksekød", "bøf", "spidsbryst", "beef"],
+    "svin": ["svin", "svinekød", "gris", "flæsk", "flæskesteg", "pork"],
+    "lam": ["lam", "lammekød", "mutton"],
+    "fisk": ["fisk", "laks", "torsk", "kuller", "ørred", "tun", "salmon", "cod", "fish"],
+    "skaldyr": ["rejer", "muslinger", "blæksprutte", "kammusling", "krabbe", "squid", "shrimp", "shellfish"]
+  },
+  "diet": {
+    "vegetar": ["vegetar", "vegetarian"],
+    "vegansk": ["vegansk", "vegan"]
+  },
+  "cuisine": {
+    "indisk": ["indisk", "indian", "masala", "tikka", "karry", "curry"],
+    "thai": ["thai", "thailandsk", "green curry", "red curry", "pad thai"],
+    "italiensk": ["italiensk", "italian", "pasta", "bolognese", "pizza", "lasagne"],
+    "græsk": ["græsk", "greek", "moussaka", "souvlaki", "gyro"],
+    "japansk": ["japansk", "japanese", "gyudon", "ramen", "sushi", "katsu"],
+    "kinesisk": ["kinesisk", "chinese", "bao", "dumpling"],
+    "mexicansk": ["mexicansk", "mexican", "taco", "burrito"],
+    "burger": ["burger", "hamburger"],
+    "salat": ["salat", "salad"]
+  }
+}
 
 **Menu Data:**
 ${JSON.stringify(menuData, null, 2)}
@@ -327,32 +352,59 @@ ${JSON.stringify(menuData, null, 2)}
 **User Preferences (Keywords):**
 ${activeKeywords}
 
-**Instructions:**
-1.  For each day ("Mandag", "Tirsdag", etc.), examine the dishes in all cafeterias ("HUB 1", "HUB 2", "HUB 3", "Foodcore").
-2.  Compare the dish descriptions with the user's preference keywords.
-3.  A match occurs if a keyword is present in the dish name or description. Also, consider related terms (e.g., 'pork' for 'flæskesteg', 'beef' for 'oksekød').
-4.  If multiple cafeterias match for a given day, prioritize the one that seems like a stronger or more direct match.
-5.  If a dish is explicitly labeled "Vegetar", it should match a "vegetarian" or "vegetar" preference.
-6.  Your primary goal is to find the single best cafeteria for each day.
-7.  If NO cafeteria matches the preferences for a specific day, you MUST return "Any" for that day. Do not invent a match.
+**Matching Rules:**
+1. Normalize all text (lowercase, ignore diacritics) for Danish and English
+2. A preference matches a dish if there is:
+   - Direct token match: +3 points
+   - Synonym/category match via SynonymMap: +2 points  
+   - Cuisine/style match via SynonymMap: +1 point
+3. Sum scores per dish. Choose cafeteria with highest score per day.
+4. If user has "vegetar"/"vegansk", exclude meat/fish dishes unless explicitly marked vegetarian/vegan.
+5. If all scores <2 for a day, return "Any"
+6. On ties, prefer explicit mentions over generic categories
 
 **Output Format:**
-Return a single JSON object mapping each day of the week to the recommended cafeteria.
-Example:
-{
-  "Mandag": "HUB 1",
-  "Tirsdag": "Foodcore",
-  "Onsdag": "Any",
-  "Torsdag": "HUB 2",
-  "Fredag": "HUB 1"
-}
+Return only a JSON object mapping each day to a cafeteria name.
+Example: {"Mandag": "HUB 1", "Tirsdag": "Foodcore", "Onsdag": "Any", "Torsdag": "HUB 2", "Fredag": "HUB 1"}
 `;
                 return await callGemini(prompt, apiKey);
             }
 
             async function getKeywordSuggestionsFromGemini(dishes, apiKey) {
-                const prompt = `Extract food keywords from dishes: ${JSON.stringify(dishes)}
-Return lowercase keywords only. Example: ["indian", "chicken", "curry"]`;
+                const prompt = `Extract food keywords from Danish/English dishes using this SynonymMap to suggest canonical Danish terms:
+
+**SynonymMap:**
+{
+  "protein": {
+    "fjerkræ": ["kylling", "høne", "hane", "kalkun", "chicken", "poultry"],
+    "okse": ["okse", "oksekød", "bøf", "spidsbryst", "beef"],
+    "svin": ["svin", "svinekød", "gris", "flæsk", "flæskesteg", "pork"],
+    "lam": ["lam", "lammekød", "mutton"],
+    "fisk": ["fisk", "laks", "torsk", "kuller", "ørred", "tun", "salmon", "cod"],
+    "skaldyr": ["rejer", "muslinger", "blæksprutte", "kammusling", "krabbe", "squid", "shrimp"]
+  },
+  "diet": {
+    "vegetar": ["vegetar", "vegetarian"],
+    "vegansk": ["vegansk", "vegan"]
+  },
+  "cuisine": {
+    "indisk": ["indisk", "indian", "masala", "tikka", "karry", "curry"],
+    "thai": ["thai", "thailandsk"],
+    "italiensk": ["italiensk", "italian", "pasta", "bolognese"],
+    "græsk": ["græsk", "greek", "moussaka"],
+    "japansk": ["japansk", "japanese", "gyudon", "ramen"],
+    "kinesisk": ["kinesisk", "chinese", "bao"],
+    "burger": ["burger", "hamburger"],
+    "salat": ["salat", "salad"]
+  }
+}
+
+**Dishes:** ${JSON.stringify(dishes)}
+
+**Instructions:**
+Use SynonymMap to group dish tokens and suggest 5-12 high-signal canonical Danish keywords that would improve future recommendations. Prefer categories (e.g., "fjerkræ", "okse", "svin", cuisines like "indisk").
+
+Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "vegetar", "salat"]`;
                 const result = await callGemini(prompt, apiKey);
                 // Ensure the result is an array and all items are strings.
                 if (Array.isArray(result) && result.every(item => typeof item === 'string')) {
