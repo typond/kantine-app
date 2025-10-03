@@ -13,6 +13,25 @@
             font-family: 'Inter', sans-serif;
             background-color: #f9fafb;
         }
+        
+        /* Toggle button active states with light green highlighting */
+        .view-toggle-active {
+            background-color: #ecfdf5 !important;
+            color: #065f46 !important;
+            border-color: #34d399 !important;
+            box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.3) !important;
+        }
+        
+        .view-toggle-inactive {
+            background-color: transparent !important;
+            color: #6b7280 !important;
+            border-color: transparent !important;
+        }
+        
+        .view-toggle-inactive:hover {
+            background-color: #f8fafc !important;
+            color: #374151 !important;
+        }
         .highlight-dish {
             transform: scale(1.03);
             box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.3), 0 4px 6px -2px rgba(16, 185, 129, 0.2);
@@ -116,46 +135,99 @@
             100% { transform: translateY(-1px) scale(1.05); }
         }
         
-        /* Smoke animation */
+        /* Rocket icons and simple smoke */
+        .rocket-icon {
+            transition: all 0.3s ease;
+            transform-origin: center;
+            filter: grayscale(100%) opacity(0.5);
+        }
+        
+        .rocket-icon:hover {
+            transform: translateY(-2px) scale(1.1);
+            filter: grayscale(80%) opacity(0.8);
+        }
+        
+        .rocket-icon.active {
+            filter: none !important;
+            opacity: 1 !important;
+            animation: rocketBoost 1s ease-in-out infinite alternate;
+        }
+        
+        .rocket-icon.active:hover {
+            transform: translateY(-3px) scale(1.15);
+            filter: none !important;
+        }
+        
+        /* Simple smoke effect - positioned below and to the left of rocket */
         .smoke-effect {
             position: relative;
+            display: inline-block;
         }
         
-        .smoke-effect::after {
-            content: '';
+        .smoke-effect::before {
+            content: '☁️';
             position: absolute;
-            top: 8px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background-image: 
-                radial-gradient(circle at 30% 30%, rgba(150,150,150,0.8) 20%, transparent 20%),
-                radial-gradient(circle at 70% 70%, rgba(120,120,120,0.6) 25%, transparent 25%),
-                radial-gradient(circle at 50% 50%, rgba(100,100,100,0.4) 30%, transparent 30%);
+            top: 20px;
+            left: -20px;
+            font-size: 10px;
             opacity: 0;
-            animation: smokeRise 2s ease-in-out infinite;
-            z-index: 10;
+            z-index: 20;
+            pointer-events: none;
         }
         
-        .rocket-icon.active + .smoke-effect::after {
+        /* Only show smoke when rocket is active within same container */
+        .rocket-favorite-btn:has(.rocket-icon.active) .smoke-effect::before {
             opacity: 1;
+            animation: simpleSmoke 3s ease-in-out infinite;
         }
         
-        @keyframes smokeRise {
+        /* Fallback for browsers that don't support :has() */
+        .rocket-favorite-btn.active .smoke-effect::before {
+            opacity: 1;
+            animation: simpleSmoke 3s ease-in-out infinite;
+        }
+        
+        @keyframes simpleSmoke {
             0% { 
-                opacity: 0.8;
-                transform: translateX(-50%) translateY(0) scale(0.8);
+                opacity: 0;
+                transform: translateX(0) translateY(0) scale(0.5);
             }
-            50% { 
-                opacity: 0.6;
-                transform: translateX(-50%) translateY(-8px) scale(1.2);
+            30% { 
+                opacity: 0.8;
+                transform: translateX(-10px) translateY(-5px) scale(1.2);
+            }
+            60% { 
+                opacity: 0.5;
+                transform: translateX(-20px) translateY(-10px) scale(1.5);
             }
             100% { 
                 opacity: 0;
-                transform: translateX(-50%) translateY(-16px) scale(1.5);
+                transform: translateX(-35px) translateY(-15px) scale(2);
             }
+        }
+        
+        /* Rocket Flying Animation */
+        .rocket-flying {
+            position: fixed !important;
+            z-index: 1000 !important;
+            pointer-events: none;
+            font-size: inherit !important; /* Maintain original size */
+            transition: transform 0.063s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important; /* Bézier curves: 30 waypoints in 2 seconds */
+            animation: rocketGlow 3.45s ease-in-out infinite alternate; /* 15% slower glow */
+        }
+        
+        @keyframes rocketGlow {
+            0%, 100% { 
+                filter: brightness(1) drop-shadow(0 0 5px rgba(255, 107, 107, 0.5));
+            }
+            100% { 
+                filter: brightness(1.3) drop-shadow(0 0 15px rgba(255, 107, 107, 0.9));
+            }
+        }
+        
+        /* Hide original rocket while flying */
+        .rocket-favorite-btn.rocket-is-flying .rocket-icon {
+            opacity: 0;
         }
     </style>
 </head>
@@ -172,7 +244,17 @@
                     <p class="text-gray-500">Your Weekly Dining Recommendations</p>
                 </div>
             </div>
-            <div id="current-week" class="text-right text-gray-500 text-sm md:text-base font-medium"></div>
+            <div class="flex flex-col items-end gap-2">
+                <!-- View Toggle -->
+                <div class="bg-gray-100 rounded-lg p-1 flex">
+                    <button id="day-view-btn" class="px-3 py-1 rounded-md text-sm font-medium text-gray-700 bg-white shadow-sm transition-all duration-200 border border-gray-200" title="Show only today's menu">
+                        Dag
+                    </button>
+                    <button id="week-view-btn" class="px-3 py-1 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700 transition-all duration-200" title="Show full week">
+                        Week <span id="current-week-number"></span>
+                    </button>
+                </div>
+            </div>
         </header>
 
         <!-- Main controls -->
@@ -262,18 +344,23 @@
             const closeModalBtn = document.getElementById('close-modal-btn');
             const addSuggestionsBtn = document.getElementById('add-suggestions-btn');
             const filterDetails = document.querySelector('details'); // Filter preferences details element
+            const dayViewBtn = document.getElementById('day-view-btn');
+            const weekViewBtn = document.getElementById('week-view-btn');
+            const currentWeekNumberSpan = document.getElementById('current-week-number');
 
             // --- State ---
             // IMPORTANT: The app credential is obfuscated to deter casual snooping.
             // For production environments, it is strongly recommended to use a backend proxy
             // to handle API calls and keep secrets secure.
-            const encodedData = "QUl6YVN5QkxOQnVyZDRzUmpvNWR3WkY5NUItZ1ZZSWczNmJUdmFv";
+            const encodedData = "QUl6YVN5QkxOQnVyZDRzUmpvNWR3WkY5NUItL1ZZSWczNmJUdmFv";
             const appToken = atob(encodedData); // Decode the token for use
             const API_CALL_LIMIT = 4;
             const defaultKeywords = ['fjerkræ', 'flæskesteg', 'thai', 'indisk', 'karry', 'curry', 'bolognese', 'moussaka', 'gyudon', 'bao', 'spidsbryst', 'okse', 'fisk'];
             let keywords = [];
             let favorites = []; // In-memory favorites cache
             let parsedMenuData = null; // In-memory cache for the session
+            let currentViewMode = 'day'; // Default to day view (phone-style)
+            let currentRecommendations = null; // Store recommendations for re-rendering
             
             // Auto-hide functionality
             let collapseTimeout = null;
@@ -438,7 +525,7 @@
             function renderKeywords() {
                 keywordsContainer.innerHTML = keywords.map(keyword => {
                     const isFav = favorites.includes(keyword);
-                    return `<label class="flex items-center justify-between space-x-2 p-2 rounded-lg hover:bg-gray-50 cursor-pointer border border-transparent"><div class="flex items-center space-x-2"><input type="checkbox" value="${keyword}" class="keyword-checkbox h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" checked><span class="text-gray-700 capitalize">${keyword}</span></div><div class="flex items-center space-x-2"><div class="relative"><button class="rocket-favorite-btn text-gray-300 hover:text-orange-400" data-keyword="${keyword}" title="Launch as favorite"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="rocket-icon h-5 w-5 ${isFav ? 'active text-orange-500' : 'text-gray-300'}" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2zm0 2.44L10.5 8.5h3L12 4.44zm-1.5 5.06L12 15l1.5-5.5h-3z"/></svg><div class="smoke-effect"></div></div><button class="delete-keyword-btn text-gray-400 hover:text-red-500" data-keyword="${keyword}" title="Delete keyword"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg></button></div></label>`;
+                    return `<label class="flex items-center justify-between space-x-2 p-2 rounded-lg hover:bg-gray-50 cursor-pointer border border-transparent"><div class="flex items-center space-x-2"><input type="checkbox" value="${keyword}" class="keyword-checkbox h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" checked><span class="text-gray-700 capitalize">${keyword}</span></div><div class="flex items-center space-x-2"><div class="relative"><button class="rocket-favorite-btn relative ${isFav ? 'active' : ''}" data-keyword="${keyword}" title="Launch as favorite"><span class="rocket-icon text-2xl ${isFav ? 'active' : ''}">🚀</span><div class="smoke-effect"></div></button></div><button class="delete-keyword-btn text-gray-400 hover:text-red-500" data-keyword="${keyword}" title="Delete keyword"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg></button></div></label>`;
                 }).join('');
             }
 
@@ -624,6 +711,12 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
                 errorContainer.classList.remove('hidden');
             }
             
+            function getTodayName() {
+                const today = new Date();
+                const dayNames = ["Søndag", "Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag"];
+                return dayNames[today.getDay()];
+            }
+
             function generateCalendarLink(day, cafeteria, dish) {
                 const dayMap = { "Mandag": 1, "Tirsdag": 2, "Onsdag": 3, "Torsdag": 4, "Fredag": 5 };
                 const targetDay = dayMap[day];
@@ -645,45 +738,578 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
                 return `${baseUrl}&text=${title}&dates=${dates}&details=${details}&location=${location}`;
             }
 
+            /**
+             * Animates a rocket flying around the screen with curved flight paths
+             * @param {HTMLElement} rocketBtn - The rocket button element to animate
+             * @param {Function} onComplete - Optional callback function to run before showing the rocket again
+             */
+            function animateRocket(rocketBtn, onComplete) {
+                const rocket = rocketBtn.querySelector('.rocket-icon');
+                if (!rocket) return;
+                
+                // Mark button as flying to hide original rocket
+                rocketBtn.classList.add('rocket-is-flying');
+                
+                // Clone the rocket for flying animation with original font-size
+                const flyingRocket = rocket.cloneNode(true);
+                flyingRocket.className = 'rocket-flying';
+                
+                // Preserve original size by copying computed styles
+                const computedStyle = window.getComputedStyle(rocket);
+                flyingRocket.style.fontSize = computedStyle.fontSize;
+                
+                // Get original rocket position relative to viewport
+                // Position at top-right corner of the icon
+                const rect = rocket.getBoundingClientRect();
+                flyingRocket.style.left = (rect.left + rect.width) + 'px'; // Right edge of icon
+                flyingRocket.style.top = rect.top + 'px'; // Top edge of icon
+                
+                // Add flying rocket to body
+                document.body.appendChild(flyingRocket);
+                
+                // Generate curved flight path adapted to rocket position (left flies right, right flies left)
+                const flightPath = generateCurvedFlightPath(30, rocketBtn); // 30 waypoints along Bézier curves for ultra-smooth animation
+                let currentPosition = 0;
+                
+                function moveToNextPosition() {
+                    if (currentPosition < flightPath.length) {
+                        const pos = flightPath[currentPosition];
+                        // Use translate3d for better performance and smoother curves
+                        flyingRocket.style.transform = `translate3d(${pos.x}px, ${pos.y}px, 0) rotate(${pos.rotation}deg)`;
+                        currentPosition++;
+                        setTimeout(moveToNextPosition, 63); // Bézier curves: 30 waypoints in 2 seconds
+                    } else {
+                        // Land back at original position with final curve
+                        flyingRocket.style.transform = 'translate3d(0, 0, 0) rotate(0deg)';
+                        setTimeout(() => {
+                            if (document.body.contains(flyingRocket)) {
+                                document.body.removeChild(flyingRocket);
+                            }
+                            // Run callback before showing rocket again (to apply active class first)
+                            if (onComplete) {
+                                onComplete();
+                            }
+                            
+                            // Show sparkle effect briefly before revealing rocket
+                            const rocketIcon = rocketBtn.querySelector('.rocket-icon');
+                            if (rocketIcon) {
+                                const originalContent = rocketIcon.textContent;
+                                rocketIcon.textContent = '✨'; // Show sparkle
+                                rocketBtn.classList.remove('rocket-is-flying'); // Make visible
+                                
+                                // After 280ms, restore original rocket icon
+                                setTimeout(() => {
+                                    rocketIcon.textContent = originalContent; // Restore rocket
+                                }, 280);
+                            } else {
+                                // Fallback if no icon found
+                                setTimeout(() => {
+                                    rocketBtn.classList.remove('rocket-is-flying');
+                                }, 50);
+                            }
+                        }, 63); // Bézier curve landing: 30 waypoints in 2 seconds
+                    }
+                }
+                
+                // Start animation sequence with slight delay (also 15% slower)
+                setTimeout(moveToNextPosition, 50); // Fast start: optimized for 2-second animation
+            }
+
+            /**
+             * Calculates a point on a cubic Bézier curve
+             * @param {number} t - Parameter from 0 to 1
+             * @param {Object} p0 - Start point {x, y}
+             * @param {Object} p1 - First control point {x, y}
+             * @param {Object} p2 - Second control point {x, y}
+             * @param {Object} p3 - End point {x, y}
+             * @returns {Object} Point on curve {x, y}
+             */
+            function cubicBezier(t, p0, p1, p2, p3) {
+                const u = 1 - t;
+                const tt = t * t;
+                const uu = u * u;
+                const uuu = uu * u;
+                const ttt = tt * t;
+                
+                // Cubic Bézier formula: B(t) = (1-t)³P₀ + 3(1-t)²tP₁ + 3(1-t)t²P₂ + t³P₃
+                const x = uuu * p0.x + 3 * uu * t * p1.x + 3 * u * tt * p2.x + ttt * p3.x;
+                const y = uuu * p0.y + 3 * uu * t * p1.y + 3 * u * tt * p2.y + ttt * p3.y;
+                
+                return { x, y };
+            }
+            
+            /**
+             * Calculates the tangent (derivative) of a cubic Bézier curve at point t
+             * Used to determine rocket rotation angle
+             * @param {number} t - Parameter from 0 to 1
+             * @param {Object} p0 - Start point {x, y}
+             * @param {Object} p1 - First control point {x, y}
+             * @param {Object} p2 - Second control point {x, y}
+             * @param {Object} p3 - End point {x, y}
+             * @returns {Object} Tangent vector {x, y}
+             */
+            function cubicBezierTangent(t, p0, p1, p2, p3) {
+                const u = 1 - t;
+                const uu = u * u;
+                const tt = t * t;
+                
+                // Derivative: B'(t) = 3(1-t)²(P₁-P₀) + 6(1-t)t(P₂-P₁) + 3t²(P₃-P₂)
+                const x = 3 * uu * (p1.x - p0.x) + 6 * u * t * (p2.x - p1.x) + 3 * tt * (p3.x - p2.x);
+                const y = 3 * uu * (p1.y - p0.y) + 6 * u * t * (p2.y - p1.y) + 3 * tt * (p3.y - p2.y);
+                
+                return { x, y };
+            }
+
+            /**
+             * Generates smooth Bézier curve flight path across the screen
+             * Uses cubic Bézier curves for professional-grade smooth animations
+             * Flight direction adapts based on rocket position (left flies right, right flies left)
+             * @param {number} pointCount - Number of waypoints to generate along Bézier curves
+             * @param {HTMLElement} rocketBtn - The rocket button to determine position
+             * @returns {Array} Array of position objects with smooth Bézier trajectories
+             */
+            function generateCurvedFlightPath(pointCount, rocketBtn) {
+                // Professional Bézier curve flight with sequential directional patterns
+                // Get the window dimensions for unrestricted flight
+                const boxWidth = window.innerWidth;
+                const boxHeight = window.innerHeight;
+                
+                // Determine rocket's order in the sequence and direction
+                const allRockets = document.querySelectorAll('.rocket-favorite-btn');
+                const rocketIndex = Array.from(allRockets).indexOf(rocketBtn);
+                const directionSequence = ['UP', 'DOWN', 'RIGHT', 'LEFT'];
+                const flightDirection = directionSequence[rocketIndex % 4]; // Cycle through: UP → DOWN → RIGHT → LEFT
+                
+                // Determine if rocket is on left or right side of screen
+                const rocketRect = rocketBtn.getBoundingClientRect();
+                const rocketCenterX = rocketRect.left + rocketRect.width / 2;
+                const screenCenterX = window.innerWidth / 2;
+                const isLeftSide = rocketCenterX < screenCenterX;
+                
+                // Generate unique patterns using rocket position as seed for variation
+                const positionHash = Math.abs(rocketCenterX.toString().split('').reduce((a,b) => a + b.charCodeAt(0), 0));
+                const patternVariation = (positionHash % 5) / 5; // 0 to 0.8 variation
+                const curveIntensity = 0.3 + patternVariation * 0.4; // 0.3 to 0.7 intensity
+                
+                // Define varied control points for cubic Bézier curves
+                let curve1Start, curve1Control1, curve1Control2, curve1End;
+                let curve2Start, curve2Control1, curve2Control2, curve2End;
+                let curve3Start, curve3Control1, curve3Control2, curve3End;
+                
+                // Create flight patterns based on sequential direction
+                const variant1 = patternVariation;
+                const variant2 = (positionHash * 1.618) % 1; // Golden ratio for smooth variation
+                const variant3 = (positionHash * 2.718) % 1; // Euler's number for different variation
+                
+                // Base curve starting point
+                curve1Start = { x: 0, y: 0 };
+                
+                // Generate curves based on assigned flight direction
+                if (flightDirection === 'UP') {
+                    // UP: Start → Top area → Top corners → Return from bottom-left
+                    
+                    // Curve 1: Start → Upper area (UP flight path)
+                    
+                    // Curve 1: Start → Upper-right area (varied)
+                    curve1Start = { x: 0, y: 0 };
+                    curve1Control1 = { 
+                        x: boxWidth * (0.1 + variant1 * 0.3), 
+                        y: -boxHeight * (0.15 + variant2 * 0.2) 
+                    };
+                    curve1Control2 = { 
+                        x: boxWidth * (0.3 + variant3 * 0.4), 
+                        y: -boxHeight * (0.4 + variant1 * 0.3) 
+                    };
+                    curve1End = { 
+                        x: boxWidth * (0.5 + variant2 * 0.3), 
+                        y: -boxHeight * (0.6 + variant3 * 0.2) 
+                    };
+                    
+                    // Curve 2: Upper-right → Right bottom corner (varied)
+                    curve2Start = curve1End;
+                    curve2Control1 = { 
+                        x: boxWidth * (0.8 + variant2 * 0.1), 
+                        y: boxHeight * (0.25 + variant3 * 0.2) 
+                    };
+                    curve2Control2 = { 
+                        x: boxWidth * (0.6 + variant1 * 0.15), 
+                        y: boxHeight * (0.7 + variant2 * 0.2) 
+                    };
+                    curve2End = { 
+                        x: boxWidth * (0.85 + variant3 * 0.1), 
+                        y: boxHeight * (0.6 + variant1 * 0.2) 
+                    };
+                    
+                    // Curve 3: Right bottom corner → Origin (varied)
+                    curve3Start = curve2End;
+                    curve3Control1 = { 
+                        x: boxWidth * (0.9 + variant2 * 0.1), 
+                        y: boxHeight * (0.4 + variant1 * 0.15) 
+                    };
+                    curve3Control2 = { 
+                        x: boxWidth * (0.95 + variant3 * 0.05), 
+                        y: boxHeight * (0.15 + variant2 * 0.1) 
+                    };
+                    curve3End = { x: 0, y: 0 }; // Origin
+                } else if (flightDirection === 'DOWN') {
+                    // DOWN: Start → Bottom area → Bottom corners → Return from top-left
+                    curve1Control1 = { 
+                        x: boxWidth * (0.1 + variant1 * 0.3), 
+                        y: boxHeight * (0.15 + variant2 * 0.2) 
+                    };
+                    curve1Control2 = { 
+                        x: boxWidth * (0.3 + variant3 * 0.4), 
+                        y: boxHeight * (0.4 + variant1 * 0.3) 
+                    };
+                    curve1End = { 
+                        x: boxWidth * (0.5 + variant2 * 0.3), 
+                        y: boxHeight * (0.6 + variant3 * 0.2) 
+                    };
+                    
+                    curve2Start = curve1End;
+                    curve2Control1 = { 
+                        x: boxWidth * (0.7 + variant1 * 0.2), 
+                        y: boxHeight * (0.4 + variant2 * 0.3) 
+                    };
+                    curve2Control2 = { 
+                        x: boxWidth * (0.8 + variant3 * 0.15), 
+                        y: boxHeight * (0.9 + variant1 * 0.08) 
+                    };
+                    curve2End = { 
+                        x: boxWidth * (0.1 + variant2 * 0.1), 
+                        y: boxHeight * (0.2 + variant3 * 0.15) 
+                    };
+                    
+                    curve3Start = curve2End;
+                    curve3Control1 = { 
+                        x: boxWidth * (0.2 + variant1 * 0.2), 
+                        y: -boxHeight * (0.1 + variant2 * 0.2) 
+                    };
+                    curve3Control2 = { 
+                        x: boxWidth * (0.05 + variant3 * 0.1), 
+                        y: boxHeight * (0.4 + variant1 * 0.2) 
+                    };
+                    curve3End = { x: 0, y: 0 }; // Origin
+                    
+                } else if (flightDirection === 'RIGHT') {
+                    // RIGHT: Start → Right area → Right corners → Return from bottom-left
+                    curve1Control1 = { 
+                        x: boxWidth * (0.15 + variant1 * 0.3), 
+                        y: boxHeight * (0.1 + variant2 * 0.2) 
+                    };
+                    curve1Control2 = { 
+                        x: boxWidth * (0.4 + variant3 * 0.3), 
+                        y: boxHeight * (0.3 + variant1 * 0.3) 
+                    };
+                    curve1End = { 
+                        x: boxWidth * (0.6 + variant2 * 0.2), 
+                        y: boxHeight * (0.5 + variant3 * 0.3) 
+                    };
+                    
+                    curve2Start = curve1End;
+                    curve2Control1 = { 
+                        x: boxWidth * (0.8 + variant1 * 0.15), 
+                        y: boxHeight * (0.7 + variant2 * 0.2) 
+                    };
+                    curve2Control2 = { 
+                        x: boxWidth * (0.9 + variant3 * 0.08), 
+                        y: boxHeight * (0.4 + variant1 * 0.3) 
+                    };
+                    curve2End = { 
+                        x: boxWidth * (0.7 + variant2 * 0.2), 
+                        y: boxHeight * (0.8 + variant3 * 0.15) 
+                    };
+                    
+                    curve3Start = curve2End;
+                    curve3Control1 = { 
+                        x: boxWidth * (0.4 + variant1 * 0.3), 
+                        y: boxHeight * (0.9 + variant2 * 0.08) 
+                    };
+                    curve3Control2 = { 
+                        x: boxWidth * (0.1 + variant3 * 0.2), 
+                        y: boxHeight * (0.6 + variant1 * 0.3) 
+                    };
+                    curve3End = { x: 0, y: 0 }; // Origin
+                    
+                } else if (flightDirection === 'LEFT') {
+                    // LEFT: Start → Left area → Left corners → Return from bottom-right
+                    curve1Control1 = { 
+                        x: -boxWidth * (0.15 + variant1 * 0.3), 
+                        y: boxHeight * (0.1 + variant2 * 0.2) 
+                    };
+                    curve1Control2 = { 
+                        x: -boxWidth * (0.4 + variant3 * 0.3), 
+                        y: boxHeight * (0.3 + variant1 * 0.3) 
+                    };
+                    curve1End = { 
+                        x: -boxWidth * (0.6 + variant2 * 0.2), 
+                        y: boxHeight * (0.5 + variant3 * 0.3) 
+                    };
+                    
+                    curve2Start = curve1End;
+                    curve2Control1 = { 
+                        x: -boxWidth * (0.8 + variant1 * 0.15), 
+                        y: boxHeight * (0.7 + variant2 * 0.2) 
+                    };
+                    curve2Control2 = { 
+                        x: -boxWidth * (0.9 + variant3 * 0.08), 
+                        y: boxHeight * (0.4 + variant1 * 0.3) 
+                    };
+                    curve2End = { 
+                        x: -boxWidth * (0.7 + variant2 * 0.2), 
+                        y: boxHeight * (0.8 + variant3 * 0.15) 
+                    };
+                    
+                    curve3Start = curve2End;
+                    curve3Control1 = { 
+                        x: -boxWidth * (0.4 + variant1 * 0.3), 
+                        y: boxHeight * (0.9 + variant2 * 0.08) 
+                    };
+                    curve3Control2 = { 
+                        x: -boxWidth * (0.1 + variant3 * 0.2), 
+                        y: boxHeight * (0.6 + variant1 * 0.3) 
+                    };
+                    curve3End = { x: 0, y: 0 }; // Origin
+                }
+                
+                const path = [];
+                const pointsPerCurve = Math.floor(pointCount / 3);
+                
+                // Generate points along Curve 1 (Start → Upper area)
+                for (let i = 0; i <= pointsPerCurve; i++) {
+                    const t = i / pointsPerCurve;
+                    const point = cubicBezier(t, curve1Start, curve1Control1, curve1Control2, curve1End);
+                    const tangent = cubicBezierTangent(t, curve1Start, curve1Control1, curve1Control2, curve1End);
+                    // Rotation automatically calculated from curve tangent + 45° tilt to the right
+                    const rotation = Math.atan2(tangent.y, tangent.x) * 180 / Math.PI + 45;
+                    
+                    path.push({
+                        x: point.x,
+                        y: point.y,
+                        rotation: rotation
+                    });
+                }
+                
+                // Generate points along Curve 2 (Upper area → Left bottom corner)
+                for (let i = 1; i <= pointsPerCurve; i++) {
+                    const t = i / pointsPerCurve;
+                    const point = cubicBezier(t, curve2Start, curve2Control1, curve2Control2, curve2End);
+                    const tangent = cubicBezierTangent(t, curve2Start, curve2Control1, curve2Control2, curve2End);
+                    const rotation = Math.atan2(tangent.y, tangent.x) * 180 / Math.PI + 45; // +45° tilt to the right
+                    
+                    path.push({
+                        x: point.x,
+                        y: point.y,
+                        rotation: rotation
+                    });
+                }
+                
+                // Generate points along Curve 3 (Left bottom corner → Origin)
+                for (let i = 1; i <= pointsPerCurve; i++) {
+                    const t = i / pointsPerCurve;
+                    const point = cubicBezier(t, curve3Start, curve3Control1, curve3Control2, curve3End);
+                    const tangent = cubicBezierTangent(t, curve3Start, curve3Control1, curve3Control2, curve3End);
+                    const rotation = Math.atan2(tangent.y, tangent.x) * 180 / Math.PI + 45; // +45° tilt to the right
+                    
+                    path.push({
+                        x: point.x,
+                        y: point.y,
+                        rotation: rotation
+                    });
+                }
+                
+                return path;
+            }
+
+            /**
+             * Applies quadratic bezier smoothing to create natural curved flight paths
+             * @param {Array} points - Array of control points
+             * @returns {Array} Smoothed path points
+             */
+            function smoothBezierPath(points) {
+                if (points.length < 2) return points;
+                
+                const smoothed = [];
+                
+                for (let i = 0; i < points.length; i++) {
+                    if (i === 0) {
+                        // First point: linear towards next
+                        smoothed.push({
+                            x: points[i].x,
+                            y: points[i].y,
+                            rotation: points[i].rotation
+                        });
+                    } else if (i === points.length - 1) {
+                        // Last point: linear from previous
+                        smoothed.push({
+                            x: points[i].x,
+                            y: points[i].y,
+                            rotation: points[i].rotation
+                        });
+                    } else {
+                        // Middle points: quadratic bezier curve
+                        const prevPoint = points[i - 1];
+                        const currPoint = points[i];
+                        const nextPoint = points[i + 1];
+                        
+                        // Control point calculation for smooth curves
+                        const cp1x = prevPoint.x + (currPoint.x - prevPoint.x) * 0.5;
+                        const cp1y = prevPoint.y + (currPoint.y - prevPoint.y) * 0.5;
+                        const cp2x = currPoint.x + (nextPoint.x - currPoint.x) * 0.5;
+                        const cp2y = currPoint.y + (nextPoint.y - currPoint.y) * 0.5;
+                        
+                        smoothed.push({
+                            x: cp2x,
+                            y: cp2y,
+                            rotation: currPoint.rotation + (Math.sin(i) * 10) // Add subtle variation
+                        });
+                    }
+                }
+                
+                return smoothed;
+            }
+
             function renderMenu(menuData, recommendations) {
                 loadingSpinner.classList.add('hidden');
                 menuContainer.innerHTML = '';
                 menuContainer.classList.remove('hidden');
-                const cafeteriaOrder = ["HUB 1", "HUB 2", "HUB 3", "Foodcore"];
-                const daysOrder = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag"];
-                for (const cafeteria of cafeteriaOrder) {
-                    const cafeteriaMenu = menuData[cafeteria];
-                    if (!cafeteriaMenu) continue;
-                    const column = document.createElement('div');
-                    column.className = 'bg-white rounded-xl shadow-md overflow-hidden flex flex-col';
-                    let headerHtml = `<div class="p-4 bg-gray-100 border-b border-gray-200"><h2 class="text-xl font-bold text-center text-gray-700">${cafeteria}</h2></div>`;
-                    let dailyDishesHtml = '<div class="p-5 flex-grow">';
-                    for (const day of daysOrder) {
-                        const isRecommended = recommendations[day] === cafeteria;
-                        const dishEntry = cafeteriaMenu[day];
+                
+                // Get current view mode (day by default, matches phone view)
+                const isDayView = currentViewMode === 'day';
+                
+                if (isDayView) {
+                    // Mobile view: Show only today's menus with recommended first
+                    const todayName = getTodayName();
+                    const todayDate = new Date();
+                    const isWorkday = todayDate.getDay() >= 1 && todayDate.getDay() <= 5; // Monday-Friday
+                    
+                    // For weekends, show next Monday's menu
+                    let targetDay = todayName;
+                    if (!isWorkday) {
+                        targetDay = "Mandag"; // Always show next Monday's menu on weekends
+                    }
+                    
+                    const recommendedCafeteria = recommendations[targetDay];
+                    
+                    // Create array of cafeteria entries with recommended first
+                    const cafeteriaEntries = [];
+                    const cafeteriaOrder = ["HUB 1", "HUB 2", "HUB 3", "Foodcore"];
+                    
+                    for (const cafeteria of cafeteriaOrder) {
+                        const cafeteriaMenu = menuData[cafeteria];
+                        if (!cafeteriaMenu) continue;
+                        
+                        const dishEntry = cafeteriaMenu[targetDay];
                         if (!dishEntry) continue;
-                        const cardClasses = `p-4 rounded-lg border-2 day-dish ${isRecommended ? 'highlight-dish' : 'bg-white border-transparent'}`;
+                        
+                        const isRecommended = recommendedCafeteria === cafeteria;
+                        
+                        cafeteriaEntries.push({
+                            cafeteria: cafeteria,
+                            dishEntry: dishEntry,
+                            isRecommended: recommendedCafeteria === cafeteria,
+                            targetDay: targetDay,
+                            isWeekendView: !isWorkday
+                        });
+                    }
+                    
+                    // Sort to put recommended first
+                    cafeteriaEntries.sort((a, b) => {
+                        if (a.isRecommended && !b.isRecommended) return -1;
+                        if (!a.isRecommended && b.isRecommended) return 1;
+                        return 0;
+                    });
+                    
+                    // Create single column layout for day view (always phone-style)
+                    menuContainer.className = 'grid grid-cols-1 gap-6';
+                    
+                    for (const entry of cafeteriaEntries) {
+                        const column = document.createElement('div');
+                        column.className = `bg-white rounded-xl shadow-md overflow-hidden flex flex-col ${entry.isRecommended ? 'md:order-first' : ''}`;
+                        
+                        let headerHtml = `<div class="p-4 bg-gray-100 border-b border-gray-200"><h2 class="text-xl font-bold text-center text-gray-700">${entry.cafeteria}</h2></div>`;
+                        
                         let dishHtml = '';
                         let fullDishDescription = '';
-                        if (typeof dishEntry === 'string') {
-                            dishHtml = `<p class="text-gray-600">${dishEntry}</p>`;
-                            fullDishDescription = dishEntry;
+                        if (typeof entry.dishEntry === 'string') {
+                            dishHtml = `<p class="text-gray-600">${entry.dishEntry}</p>`;
+                            fullDishDescription = entry.dishEntry;
                         } else {
                             dishHtml = '<div>';
                             let dishParts = [];
-                            for (const subKitchen in dishEntry) {
-                                dishHtml += `<div class="mb-2 last:mb-0"><h4 class="font-medium text-gray-700">${subKitchen}</h4><p class="text-gray-600">${dishEntry[subKitchen]}</p></div>`;
-                                dishParts.push(`${subKitchen}: ${dishEntry[subKitchen]}`);
+                            for (const subKitchen in entry.dishEntry) {
+                                dishHtml += `<div class="mb-2 last:mb-0"><h4 class="font-medium text-gray-700">${subKitchen}</h4><p class="text-gray-600">${entry.dishEntry[subKitchen]}</p></div>`;
+                                dishParts.push(`${subKitchen}: ${entry.dishEntry[subKitchen]}`);
                             }
                             dishHtml += '</div>';
                             fullDishDescription = dishParts.join(' / ');
                         }
-                        const calendarLink = generateCalendarLink(day, cafeteria, fullDishDescription);
-                        dailyDishesHtml += `<div class="${cardClasses}"><div class="flex justify-between items-center mb-2"><h3 class="font-semibold text-gray-800">${day}</h3><div class="flex items-center space-x-2">${isRecommended ? '<span class="text-xs font-bold bg-emerald-500 text-white py-1 px-2 rounded-full shadow">EAT HERE</span>' : ''}<a href="${calendarLink}" target="_blank" rel="noopener noreferrer" title="Add to Google Calendar" class="text-gray-400 hover:text-blue-500"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd" /></svg></a></div></div>${dishHtml}</div>`;
+                        
+                        const calendarLink = generateCalendarLink(entry.targetDay, entry.cafeteria, fullDishDescription);
+                        const cardClasses = `p-4 rounded-lg border-2 ${entry.isRecommended ? 'highlight-dish' : 'bg-white border-transparent'}`;
+                        
+                        const dayLabel = entry.isWeekendView ? `${entry.targetDay} (næste uge)` : entry.targetDay;
+                        
+                        const dailyDishesHtml = `<div class="p-5 flex-grow">
+                            <div class="${cardClasses}">
+                                <div class="flex justify-between items-center mb-2">
+                                    <h3 class="font-semibold text-gray-800">${dayLabel}</h3>
+                                    <div class="flex items-center space-x-2">
+                                        ${entry.isRecommended ? '<span class="text-xs font-bold bg-emerald-500 text-white py-1 px-2 rounded-full shadow">EKSPERTENS VALG</span>' : ''}
+                                        <a href="${calendarLink}" target="_blank" rel="noopener noreferrer" title="Add to Google Calendar" class="text-gray-400 hover:text-blue-500">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd" />
+                                            </svg>
+                                        </a>
+                                    </div>
+                                </div>
+                                ${dishHtml}
+                            </div>
+                        </div>`;
+                        
+                        column.innerHTML = headerHtml + dailyDishesHtml;
+                        menuContainer.appendChild(column);
                     }
-                    dailyDishesHtml += '</div>';
-                    column.innerHTML = headerHtml + dailyDishesHtml;
-                    menuContainer.appendChild(column);
+                } else {
+                    // Desktop view: Show all days as before
+                    const cafeteriaOrder = ["HUB 1", "HUB 2", "HUB 3", "Foodcore"];
+                    const daysOrder = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"];
+                    menuContainer.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6';
+                    
+                    for (const cafeteria of cafeteriaOrder) {
+                        const cafeteriaMenu = menuData[cafeteria];
+                        if (!cafeteriaMenu) continue;
+                        const column = document.createElement('div');
+                        column.className = 'bg-white rounded-xl shadow-md overflow-hidden flex flex-col';
+                        let headerHtml = `<div class="p-4 bg-gray-100 border-b border-gray-200"><h2 class="text-xl font-bold text-center text-gray-700">${cafeteria}</h2></div>`;
+                        let dailyDishesHtml = '<div class="p-5 flex-grow">';
+                        for (const day of daysOrder) {
+                            const isRecommended = recommendations[day] === cafeteria;
+                            const dishEntry = cafeteriaMenu[day];
+                            if (!dishEntry) continue;
+                            const cardClasses = `p-4 rounded-lg border-2 day-dish ${isRecommended ? 'highlight-dish' : 'bg-white border-transparent'}`;
+                            let dishHtml = '';
+                            let fullDishDescription = '';
+                            if (typeof dishEntry === 'string') {
+                                dishHtml = `<p class="text-gray-600">${dishEntry}</p>`;
+                                fullDishDescription = dishEntry;
+                            } else {
+                                dishHtml = '<div>';
+                                let dishParts = [];
+                                for (const subKitchen in dishEntry) {
+                                    dishHtml += `<div class="mb-2 last:mb-0"><h4 class="font-medium text-gray-700">${subKitchen}</h4><p class="text-gray-600">${dishEntry[subKitchen]}</p></div>`;
+                                    dishParts.push(`${subKitchen}: ${dishEntry[subKitchen]}`);
+                                }
+                                dishHtml += '</div>';
+                                fullDishDescription = dishParts.join(' / ');
+                            }
+                            const calendarLink = generateCalendarLink(day, cafeteria, fullDishDescription);
+                            dailyDishesHtml += `<div class="${cardClasses}"><div class="flex justify-between items-center mb-2"><h3 class="font-semibold text-gray-800">${day}</h3><div class="flex items-center space-x-2">${isRecommended ? '<span class="text-xs font-bold bg-emerald-500 text-white py-1 px-2 rounded-full shadow">EAT HERE</span>' : ''}<a href="${calendarLink}" target="_blank" rel="noopener noreferrer" title="Add to Google Calendar" class="text-gray-400 hover:text-blue-500"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd" /></svg></a></div></div>${dishHtml}</div>`;
+                        }
+                        dailyDishesHtml += '</div>';
+                        column.innerHTML = headerHtml + dailyDishesHtml;
+                        menuContainer.appendChild(column);
+                    }
                 }
             }
             
@@ -706,7 +1332,42 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
                 const startOfYear = new Date(now.getFullYear(), 0, 1);
                 const pastDaysOfYear = (now.getTime() - startOfYear.getTime()) / 86400000;
                 const weekNumber = Math.ceil((pastDaysOfYear + startOfYear.getDay() + 1) / 7);
-                document.getElementById('current-week').textContent = `Uge ${weekNumber}`;
+                if (currentWeekNumberSpan) {
+                    currentWeekNumberSpan.textContent = weekNumber;
+                }
+            }
+            
+            function setViewMode(mode) {
+                currentViewMode = mode;
+                
+                // Update toggle button styles
+                if (dayViewBtn && weekViewBtn) {
+                    if (mode === 'day') {
+                        dayViewBtn.className = 'px-3 py-1 rounded-md text-sm font-medium text-gray-700 view-toggle-active transition-all duration-200';
+                        weekViewBtn.className = 'px-3 py-1 rounded-md text-sm font-medium text-gray-500 view-toggle-inactive transition-all duration-200';
+                    } else {
+                        dayViewBtn.className = 'px-3 py-1 rounded-md text-sm font-medium text-gray-500 view-toggle-inactive transition-all duration-200';
+                        weekViewBtn.className = 'px-3 py-1 rounded-md text-sm font-medium text-gray-700 view-toggle-active transition-all duration-200';
+                    }
+                }
+                
+                // Re-render menu if we have data
+                if (parsedMenuData && currentRecommendations) {
+                    renderMenu(parsedMenuData, currentRecommendations);
+                }
+            }
+            
+            function initViewToggle() {
+                // Set initial view mode (day by default)
+                setViewMode('day');
+                
+                // Add event listeners
+                if (dayViewBtn) {
+                    dayViewBtn.addEventListener('click', () => setViewMode('day'));
+                }
+                if (weekViewBtn) {
+                    weekViewBtn.addEventListener('click', () => setViewMode('week'));
+                }
             }
 
             // --- Event Listeners ---
@@ -792,6 +1453,7 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
                     
                     if (parsedMenuData && recommendations) {
                         incrementApiCount();
+                        currentRecommendations = recommendations; // Store for toggle functionality
                         renderMenu(parsedMenuData, recommendations);
                         
                         // Auto-hide filter preferences after successful menu display
@@ -842,13 +1504,47 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
                 const favBtn = e.target.closest('.rocket-favorite-btn');
                 if (favBtn) {
                     const kw = favBtn.dataset.keyword;
-                    if (favorites.includes(kw)) {
-                        favorites = favorites.filter(k => k !== kw);
+                    const isCurrentlyFavorite = favorites.includes(kw);
+                    
+                    // Both toggle on and toggle off use the same flying animation
+                    if (isCurrentlyFavorite) {
+                        // If unfavoriting, trigger the flying animation with unfavorite callback
+                        animateRocket(favBtn, () => {
+                            // This callback runs BEFORE rocket becomes visible - remove from favorites
+                            favorites = favorites.filter(k => k !== kw);
+                            favBtn.classList.remove('active');
+                            
+                            // Apply inactive class to rocket icon directly
+                            const rocketIcon = favBtn.querySelector('.rocket-icon');
+                            if (rocketIcon) {
+                                rocketIcon.classList.remove('active');
+                            }
+                            
+                            saveCookie('canteen_favorite_keywords', favorites, 365);
+                        });
                     } else {
-                        favorites.push(kw);
+                        // If favoriting, trigger the flying animation with favorite callback
+                        animateRocket(favBtn, () => {
+                            // This callback runs BEFORE rocket becomes visible - apply active class
+                            favorites.push(kw);
+                            favBtn.classList.add('active');
+                            
+                            // Apply active class to rocket icon directly
+                            const rocketIcon = favBtn.querySelector('.rocket-icon');
+                            if (rocketIcon) {
+                                rocketIcon.classList.add('active');
+                            }
+                            
+                            // Simple smoke animation restart
+                            const smokeEffect = favBtn.querySelector('.smoke-effect');
+                            if (smokeEffect) {
+                                smokeEffect.style.animation = 'none';
+                                smokeEffect.offsetHeight;
+                                smokeEffect.style.animation = null;
+                            }
+                            saveCookie('canteen_favorite_keywords', favorites, 365);
+                        });
                     }
-                    saveCookie('canteen_favorite_keywords', favorites, 365);
-                    renderKeywords();
                 }
             });
 
@@ -884,7 +1580,16 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
             
             // Set up auto-hide functionality
             addAutoHideListeners();
+            
+            // Initialize view toggle
+            initViewToggle();
+            
+            // Auto-click the "Get Menu & Recommendations" button when page loads
+            setTimeout(() => {
+                processBtn.click();
+            }, 1); // Minimal delay to ensure DOM is fully loaded
         });
     </script>
 </body>
 </html>
+
