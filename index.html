@@ -352,8 +352,50 @@
             // IMPORTANT: The app credential is obfuscated to deter casual snooping.
             // For production environments, it is strongly recommended to use a backend proxy
             // to handle API calls and keep secrets secure.
-            const encodedData = "QUl6YVN5QkxOQnVyZDRzUmpvNWR3WkY5NUItL1ZZSWczNmJUdmFv";
-            const appToken = atob(encodedData); // Decode the token for use
+            const encodedData = "QUl6YVN5Q2F0cmlBNFNBSVlvNEp0emxZcTgyZ0lYMmhuZ0Rnd2tB";
+            
+            // Robust decoding with error handling and validation
+            let appToken;
+            try {
+                // Clean the encoded string (remove any trailing spaces/newlines)
+                const cleanEncodedData = encodedData.trim();
+                console.log('🔧 Raw encoded data:', cleanEncodedData);
+                console.log('📏 Encoded length:', cleanEncodedData.length);
+                
+                // Check if it's valid base64
+                if (!/^[A-Za-z0-9+/]*={0,2}$/.test(cleanEncodedData)) {
+                    throw new Error('Invalid base64 characters detected');
+                }
+                
+                // Decode using atob
+                appToken = atob(cleanEncodedData);
+                
+                // Validate the decoded result
+                if (!appToken || appToken.length < 20) {
+                    throw new Error('Decoded key too short or empty');
+                }
+                
+                // Check if it starts with expected Google API key format
+                if (!appToken.startsWith('AIza')) {
+                    console.warn('⚠️ Decoded key does not start with "AIza" as expected');
+                }
+                
+                console.log('✅ Decoded API Key:', appToken.substring(0, 10) + '...' + appToken.substring(appToken.length - 10));
+                console.log('📏 Decoded Length:', appToken.length);
+                console.log('🔤 First 4 chars:', appToken.substring(0, 4));
+                console.log('🔤 Last 4 chars:', appToken.substring(appToken.length - 4));
+                console.log('🆕 Using NEW API Key (updated)');
+                
+            } catch (error) {
+                console.error('❌ Error decoding API key:', error.message);
+                console.error('🔧 Raw encoded data:', encodedData);
+                // Fallback - try manual character inspection
+                console.log('🔍 Manual inspection of encoded string:');
+                for (let i = 0; i < Math.min(encodedData.length, 50); i++) {
+                    console.log(`Char ${i}: "${encodedData[i]}" (ASCII: ${encodedData.charCodeAt(i)})`);
+                }
+                throw new Error('Failed to decode API key: ' + error.message);
+            }
             const API_CALL_LIMIT = 4;
             const defaultKeywords = ['fjerkræ', 'flæskesteg', 'thai', 'indisk', 'karry', 'curry', 'bolognese', 'moussaka', 'gyudon', 'bao', 'spidsbryst', 'okse', 'fisk'];
             let keywords = [];
@@ -534,6 +576,14 @@
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`;
                 const payload = { contents: [{ parts: [{ text: prompt }] }] };
                 
+                // Validate API key and payload before making the request
+                console.log('🔍 API Call Validation:');
+                console.log('   - API Key format:', apiKey.startsWith('AIza') ? '✅ Valid' : '❌ Invalid');
+                console.log('   - Prompt length:', prompt.length, 'characters');
+                console.log('   - Payload keys:', Object.keys(payload));
+                console.log('   - Contents length:', payload.contents.length);
+                console.log('   - Parts length:', payload.contents[0]?.parts.length);
+                
                 let retries = 3;
                 let delay = 1000; // Start with 1 second delay
                 const timeout = 30000; // 30 second timeout
@@ -561,8 +611,23 @@
 
                             if (!response.ok) {
                                 const errorBody = await response.text();
-                                console.error("API Error Response:", errorBody);
-                                throw new Error(`API request failed with status ${response.status}.`);
+                                console.error("🚫 API Error Response:", errorBody);
+                                console.error("🚫 Response Status:", response.status, response.statusText);
+                                console.error("🚫 Request URL:", apiUrl.substring(0, 100) + "...");
+                                console.error("🚫 API Key (first 10 chars):", apiKey.substring(0, 10) + "...");
+                                console.error("🚫 API Key length:", apiKey.length);
+                                console.error("🚫 API Key format check:", apiKey.startsWith('AIza') ? '✅ Valid format' : '❌ Invalid format');
+                                
+                                // For 400 errors, show more details about the API call
+                                if (response.status === 400) {
+                                    console.error("🔍 400 Bad Request Details:");
+                                    console.error("   - Check if API key is valid and active");
+                                    console.error("   - Check if model name is correct");
+                                    console.error("   - Check API quota and billing");
+                                    console.error("   - Check request payload format");
+                                }
+                                
+                                throw new Error(`API request failed with status ${response.status}: ${errorBody}`);
                             }
                             
                             const result = await response.json();
