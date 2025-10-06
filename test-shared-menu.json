@@ -1,0 +1,40 @@
+{
+  "menus": {
+    "42": {
+      "week": 42,
+      "menu": {
+        "HUB 1": {
+          "Mandag": "Test dish 1",
+          "Tirsdag": "Test dish 2",
+          "Onsdag": "Test dish 3",
+          "Torsdag": "Test dish 4",
+          "Fredag": "Test dish 5"
+        },
+        "HUB 2": {
+          "Mandag": "Test dish A",
+          "Tirsdag": "Test dish B",
+          "Onsdag": "Test dish C",
+          "Torsdag": "Test dish D",
+          "Fredag": "Test dish E"
+        },
+        "HUB 3": {
+          "Mandag": "Test dish X",
+          "Tirsdag": "Test dish Y",
+          "Onsdag": "Test dish Z",
+          "Torsdag": "Test dish W",
+          "Fredag": "Test dish V"
+        },
+        "Foodcore": {
+          "Mandag": "Test dish Alpha",
+          "Tirsdag": "Test dish Beta",
+          "Onsdag": "Test dish Gamma",
+          "Torsdag": "Test dish Delta",
+          "Fredag": "Test dish Epsilon"
+        }
+      },
+      "timestamp": "2024-01-15T10:30:00.000Z"
+    }
+  },
+  "lastUpdated": "2024-01-15T10:30:00.000Z",
+  "currentWeek": 42
+}

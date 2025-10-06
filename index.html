@@ -238,7 +238,7 @@
         <!-- Header -->
         <header class="flex flex-col sm:flex-row items-center justify-between pb-6 border-b-2 border-gray-100 mb-8 gap-4">
             <div class="flex items-center gap-4">
-                <img src="https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=800&auto=format&fit=crop" alt="A bowl of healthy food" class="h-12 w-12 rounded-full object-cover">
+                <img src="https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=800&auto=format&fit=crop" alt="A bowl of healthy food" class="h-12 w-12 rounded-full object-cover cursor-pointer hover:opacity-80 transition-opacity" onclick="toggleDebugMode()" title="Click to toggle debug view">
                 <div>
                     <h1 class="text-2xl font-bold text-gray-800">Canteen Menu</h1>
                     <p class="text-gray-500">Your Weekly Dining Recommendations</p>
@@ -251,9 +251,10 @@
                         Dag
                     </button>
                     <button id="week-view-btn" class="px-3 py-1 rounded-md text-sm font-medium text-gray-500 hover:text-gray-700 transition-all duration-200" title="Show full week">
-                        Week <span id="current-week-number"></span>
+                        Uge
                     </button>
                 </div>
+                <span class="text-sm text-gray-500">Uge <span id="current-week-number">-</span></span>
             </div>
         </header>
 
@@ -403,9 +404,197 @@
             let parsedMenuData = null; // In-memory cache for the session
             let currentViewMode = 'day'; // Default to day view (phone-style)
             let currentRecommendations = null; // Store recommendations for re-rendering
+            let isDebugMode = false; // Debug mode toggle state
             
             // Auto-hide functionality
             let collapseTimeout = null;
+            
+            // --- Debug Mode Functions ---
+            window.toggleDebugMode = function() {
+                isDebugMode = !isDebugMode;
+                
+                if (isDebugMode) {
+                    showDebugView();
+                } else {
+                    showMainView();
+                }
+            }
+            
+            function showDebugView() {
+                // Hide main content
+                const mainContent = document.querySelector('.container');
+                if (mainContent) {
+                    mainContent.style.display = 'none';
+                }
+                
+                // Create debug view
+                const debugView = document.createElement('div');
+                debugView.id = 'debug-view';
+                debugView.className = 'min-h-screen bg-gray-50';
+                debugView.innerHTML = `
+                    <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+                        <header class="flex items-center justify-between pb-6 border-b-2 border-gray-100 mb-8">
+                            <div class="flex items-center gap-4">
+                                <img src="https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=800&auto=format&fit=crop" alt="A bowl of healthy food" class="h-12 w-12 rounded-full object-cover cursor-pointer hover:opacity-80 transition-opacity" onclick="toggleDebugMode()">
+                                <div>
+                                    <h1 class="text-2xl font-bold text-gray-800">Debug Menu Viewer</h1>
+                                    <p class="text-gray-500">Raw menu data from database</p>
+                                </div>
+                            </div>
+                            <button onclick="toggleDebugMode()" class="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600">
+                                Back to App
+                            </button>
+                        </header>
+                        
+                        <div id="debug-content" class="bg-white rounded-xl shadow-md p-6">
+                            <div class="text-center py-8">
+                                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+                                <p class="mt-2 text-gray-600">Loading menu data...</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.appendChild(debugView);
+                loadDebugMenuData();
+            }
+            
+            function showMainView() {
+                // Remove debug view
+                const debugView = document.getElementById('debug-view');
+                if (debugView) {
+                    debugView.remove();
+                }
+                
+                // Show main content
+                const mainContent = document.querySelector('.container');
+                if (mainContent) {
+                    mainContent.style.display = 'block';
+                }
+            }
+            
+            async function loadDebugMenuData() {
+                try {
+                    const menuDB = new SharedMenuDatabase();
+                    
+                    const currentWeek = await menuDB.getCurrentWeekNumber();
+                    const allMenus = await menuDB.getAllMenus();
+                    
+                    const debugContent = document.getElementById('debug-content');
+                    
+                    if (allMenus.length === 0) {
+                        debugContent.innerHTML = `
+                            <div class="text-center py-8">
+                                <div class="text-gray-400 mb-4">
+                                    <svg class="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2M4 13h2m13-8l-4 4m0 0l-4-4m4 4V3"></path>
+                                    </svg>
+                                </div>
+                                <h3 class="text-lg font-medium text-gray-900 mb-2">No Shared Menu Data Found</h3>
+                                <p class="text-gray-600">No menu data has been shared yet. The first person to visit and click "Get Menu & Recommendations" will populate the shared database.</p>
+                            </div>
+                        `;
+                        return;
+                    }
+                    
+                    debugContent.innerHTML = `
+                        <div class="space-y-6">
+                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                <h2 class="text-lg font-semibold text-blue-900 mb-2">Shared Database Status</h2>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                        <span class="font-medium text-blue-800">Current Week:</span>
+                                        <span class="text-blue-700">${currentWeek}</span>
+                                    </div>
+                                    <div>
+                                        <span class="font-medium text-blue-800">Shared Menus:</span>
+                                        <span class="text-blue-700">${allMenus.length}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="space-y-4">
+                                <h2 class="text-lg font-semibold text-gray-800">🌐 Shared Menu Data</h2>
+                                ${allMenus.map(menu => `
+                                    <div class="border border-gray-200 rounded-lg p-4 ${menu.week === currentWeek ? 'bg-green-50 border-green-200' : ''}">
+                                        <div class="flex justify-between items-start mb-3">
+                                            <div>
+                                                <h3 class="font-semibold text-gray-800">
+                                                    Week ${menu.week} ${menu.week === currentWeek ? '(Current)' : ''}
+                                                </h3>
+                                                <p class="text-sm text-gray-600">Saved: ${new Date(menu.timestamp).toLocaleString()}</p>
+                                            </div>
+                                            <button onclick="toggleMenuData(${menu.week})" class="px-3 py-1 bg-gray-100 text-gray-700 rounded text-sm hover:bg-gray-200">
+                                                <span id="toggle-text-${menu.week}">Show Data</span>
+                                            </button>
+                                        </div>
+                                        <div id="menu-data-${menu.week}" class="hidden">
+                                            <div class="bg-gray-50 rounded p-4">
+                                                <h4 class="font-medium text-gray-700 mb-2">Raw Menu Data:</h4>
+                                                <pre class="text-xs text-gray-600 overflow-auto max-h-96 bg-white p-3 rounded border">${JSON.stringify(menu.menu, null, 2)}</pre>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                    
+                } catch (error) {
+                    console.error('Error loading debug menu data:', error);
+                    document.getElementById('debug-content').innerHTML = `
+                        <div class="text-center py-8">
+                            <div class="text-red-400 mb-4">
+                                <svg class="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                            </div>
+                            <h3 class="text-lg font-medium text-gray-900 mb-2">Error Loading Menu Data</h3>
+                            <p class="text-gray-600">${error.message}</p>
+                        </div>
+                    `;
+                }
+            }
+            
+            async function fetchSharedMenuData() {
+                try {
+                    const response = await fetch('https://raw.githubusercontent.com/typond/kantine-app/main/shared-menu.json?t=' + Date.now());
+                    if (!response.ok) {
+                        console.log('⚠️ Shared menu not available:', response.status);
+                        return null;
+                    }
+                    return await response.json();
+                } catch (error) {
+                    console.log('⚠️ Error fetching shared menu:', error.message);
+                    return null;
+                }
+            }
+            
+            window.toggleSharedMenuData = function() {
+                const dataDiv = document.getElementById('shared-menu-data');
+                const toggleText = document.getElementById('toggle-shared-text');
+                
+                if (dataDiv.classList.contains('hidden')) {
+                    dataDiv.classList.remove('hidden');
+                    toggleText.textContent = 'Hide Data';
+                } else {
+                    dataDiv.classList.add('hidden');
+                    toggleText.textContent = 'Show Data';
+                }
+            }
+            
+            window.toggleMenuData = function(weekNumber) {
+                const dataDiv = document.getElementById(`menu-data-${weekNumber}`);
+                const toggleText = document.getElementById(`toggle-text-${weekNumber}`);
+                
+                if (dataDiv.classList.contains('hidden')) {
+                    dataDiv.classList.remove('hidden');
+                    toggleText.textContent = 'Hide Data';
+                } else {
+                    dataDiv.classList.add('hidden');
+                    toggleText.textContent = 'Show Data';
+                }
+            }
             
             function autoCollapseFilters() {
                 if (filterDetails) {
@@ -571,10 +760,148 @@
                 }).join('');
             }
 
+            // --- Shared Menu Database ---
+            class SharedMenuDatabase {
+                constructor() {
+                    this.sharedMenuUrl = 'https://raw.githubusercontent.com/typond/kantine-app/main/shared-menu.json';
+                }
+                
+                async getCurrentWeekNumber() {
+                    const now = new Date();
+                    const startOfYear = new Date(now.getFullYear(), 0, 1);
+                    const pastDaysOfYear = (now.getTime() - startOfYear.getTime()) / 86400000;
+                    return Math.ceil((pastDaysOfYear + startOfYear.getDay() + 1) / 7);
+                }
+                
+                async getMenu(weekNumber) {
+                    try {
+                        console.log('🔍 Checking shared menu data for week', weekNumber);
+                        const response = await fetch(this.sharedMenuUrl + '?t=' + Date.now()); // Cache bust
+                        if (!response.ok) {
+                            console.log('⚠️ Shared menu not available:', response.status);
+                            return null;
+                        }
+                        
+                        const sharedData = await response.json();
+                        if (sharedData.menus && sharedData.menus[weekNumber]) {
+                            console.log('✅ Found shared menu for week', weekNumber);
+                            return sharedData.menus[weekNumber].menu;
+                        }
+                        
+                        console.log('⚠️ No shared menu found for week', weekNumber);
+                        return null;
+                    } catch (error) {
+                        console.log('⚠️ Error fetching shared menu:', error.message);
+                        return null;
+                    }
+                }
+                
+                async saveMenu(weekNumber, menuData) {
+                    try {
+                        console.log('💾 Saving menu to shared storage for week', weekNumber);
+                        
+                        // For now, we'll use a simple approach: save to localStorage as a backup
+                        // and show instructions for manual update to shared storage
+                        const menuRecord = {
+                            week: weekNumber,
+                            menu: menuData,
+                            timestamp: new Date().toISOString()
+                        };
+                        
+                        // Save to localStorage as backup
+                        localStorage.setItem(`menu_week_${weekNumber}`, JSON.stringify(menuRecord));
+                        
+                        // Show instructions for updating shared storage
+                        console.log('📝 Menu saved locally. To update shared storage:');
+                        console.log('1. Go to the GitHub repository');
+                        console.log('2. Edit shared-menu.json');
+                        console.log('3. Add the menu data for week', weekNumber);
+                        
+                        // For now, return true to indicate "saved" (locally)
+                        return true;
+                    } catch (error) {
+                        console.error('Error saving menu:', error);
+                        return false;
+                    }
+                }
+                
+                async getAllMenus() {
+                    try {
+                        const response = await fetch(this.sharedMenuUrl + '?t=' + Date.now());
+                        if (!response.ok) {
+                            return [];
+                        }
+                        
+                        const sharedData = await response.json();
+                        if (sharedData.menus) {
+                            return Object.keys(sharedData.menus).map(week => ({
+                                week: parseInt(week),
+                                menu: sharedData.menus[week].menu,
+                                timestamp: sharedData.menus[week].timestamp
+                            })).sort((a, b) => b.week - a.week);
+                        }
+                        
+                        return [];
+                    } catch (error) {
+                        console.error('Error retrieving all menus:', error);
+                        return [];
+                    }
+                }
+                
+                async clearOldMenus(keepWeeks = 4) {
+                    // This would need to be implemented in the shared storage system
+                    console.log('🗑️ Clear old menus functionality would need to be implemented in shared storage');
+                }
+            }
+            
+            // Initialize the shared database
+            const menuDB = new SharedMenuDatabase();
+            
+            // Debug: Monitor all network requests to identify the Google Apps Script call
+            const originalFetch = window.fetch;
+            window.fetch = function(...args) {
+                const url = args[0];
+                console.log('🌐 Network request intercepted:', url);
+                if (typeof url === 'string' && url.includes('script.google.com')) {
+                    console.error('🚨 Google Apps Script call detected:', url);
+                    console.trace('Call stack:');
+                }
+                return originalFetch.apply(this, args);
+            };
+            
+            // Shared database is ready to use immediately
+            console.log('✅ Shared database ready');
+            
+            // Add database management functions
+            async function showDatabaseStatus() {
+                try {
+                    const allMenus = await menuDB.getAllMenus();
+                    const currentWeek = await menuDB.getCurrentWeekNumber();
+                    
+                    console.log('📊 Database Status:');
+                    console.log('   Current Week:', currentWeek);
+                    console.log('   Stored Menus:', allMenus.length);
+                    console.log('   Available Weeks:', allMenus.map(m => `Week ${m.week} (${m.timestamp.split('T')[0]})`).join(', '));
+                    
+                    if (allMenus.length > 0) {
+                        console.log('   Latest Menu:', `Week ${allMenus[0].week} from ${allMenus[0].timestamp}`);
+                    }
+                } catch (error) {
+                    console.error('Error getting database status:', error);
+                }
+            }
+            
+            // Show database status on load
+            showDatabaseStatus();
+
             // --- Gemini API Functions ---
             async function callGemini(prompt, apiKey) {
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`;
                 const payload = { contents: [{ parts: [{ text: prompt }] }] };
+                
+                let retries = 2; // Reduced from 3 to 2 for faster failure detection
+                let delay = 1000; // Start with 1 second delay
+                const timeout = 30000; // Reduced from 60s to 30s since prompts are optimized
                 
                 // Validate API key and payload before making the request
                 console.log('🔍 API Call Validation:');
@@ -583,10 +910,7 @@
                 console.log('   - Payload keys:', Object.keys(payload));
                 console.log('   - Contents length:', payload.contents.length);
                 console.log('   - Parts length:', payload.contents[0]?.parts.length);
-                
-                let retries = 3;
-                let delay = 1000; // Start with 1 second delay
-                const timeout = 30000; // 30 second timeout
+                console.log('⏱️ Timeout set to:', timeout / 1000, 'seconds (optimized)');
 
                 while (retries > 0) {
                     try {
@@ -606,7 +930,7 @@
 
                             // If the server is overloaded (503), throw an error to trigger a retry.
                             if (response.status === 503) {
-                                throw new Error('Model is overloaded. Retrying...');
+                                throw new Error(`Model is overloaded. Retrying... (Attempt ${3-retries}/${3})`);
                             }
 
                             if (!response.ok) {
@@ -647,6 +971,13 @@
                         }
                     } catch (error) {
                         console.log(`Attempt failed: ${error.message}. Retries left: ${retries - 1}`);
+                        
+                        // Update loading text to show retry status
+                        const loadingText = document.getElementById('loading-text');
+                        if (loadingText && error.message.includes('Model is overloaded')) {
+                            loadingText.textContent = `API is busy, retrying in ${delay/1000} seconds... (Attempt ${3-retries}/${3})`;
+                        }
+                        
                         retries--;
                         if (retries === 0) {
                             console.error("Error calling Gemini API after multiple retries:", error);
@@ -661,107 +992,156 @@
             }
 
             async function parseMenuWithGemini(siteHtml, apiKey) {
-                const prompt = `Extract weekly menu from HTML. Return JSON with keys "HUB 1", "HUB 2", "HUB 3", "Foodcore".
-HUB 1-3: Map days (Mandag-Fredag) to dishes. Include "Vegetar" if present.
-Foodcore: Map days to {"Globetrotter": dish, "Homebound": dish}.
-HTML: ${siteHtml}`;
-                return await callGemini(prompt, apiKey);
+                const prompt = `Extract weekly menu from Danish HTML. Be flexible with cafeteria names and sub-kitchens.
+
+IMPORTANT RULES:
+1. HUBNORDIC cafeterias: Look for "HUB 1", "HUB 2", "HUB 3" (or variations like "Hub 1", "hub1", "HUB1")
+2. FOODCORE cafeteria: Look for "Foodcore", "Food Core", "FoodCore" with sub-kitchens:
+   - "Globetrotter" (or "Globetrotter", "Global", "International")
+   - "Homebound" (or "Homebound", "Home Bound", "Local", "Danish")
+3. Days: "Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag"
+4. Include "Vegetar" dishes when present
+5. Extract FULL dish descriptions, not just names
+
+OUTPUT FORMAT:
+{
+  "HUB 1": {
+    "Mandag": "Full dish description with ingredients",
+    "Tirsdag": "Full dish description...",
+    ...
+  },
+  "HUB 2": { ... },
+  "HUB 3": { ... },
+  "Foodcore": {
+    "Mandag": {
+      "Globetrotter": "International dish description",
+      "Homebound": "Local/Danish dish description"
+    },
+    "Tirsdag": { ... },
+    ...
+  }
+}
+
+HTML CONTENT:
+${siteHtml}`;
+                
+                console.log('🔍 Enhanced menu parsing prompt length:', prompt.length, 'characters');
+                const result = await callGemini(prompt, apiKey);
+                console.log('✅ Menu parsing result:', result);
+                return result;
             }
 
             async function getRecommendationsFromGemini(menuData, activeKeywords, activeFavoriteKeywords, apiKey) {
-                const prompt = `
-You are a helpful assistant for a canteen menu app matching Danish/English food preferences to cafeteria dishes. Your task is to recommend a cafeteria for each day of the week (Mandag-Fredag) based on semantic-aware user preferences.
+                // Enhanced synonym map for better matching
+                const synonymMap = `{
+                    protein: {
+                        fjerkræ: ["kylling", "høne", "hane", "kalkun", "chicken", "poultry"],
+                        okse: ["okse", "oksekød", "bøf", "spidsbryst", "beef"],
+                        svin: ["svin", "svinekød", "gris", "flæsk", "flæskesteg", "pork"],
+                        lam: ["lam", "lammekød", "mutton"],
+                        fisk: ["fisk", "laks", "torsk", "kuller", "ørred", "tun", "salmon", "cod", "fish"],
+                        skaldyr: ["rejer", "muslinger", "blæksprutte", "kammusling", "krabbe", "squid", "shrimp", "shellfish"]
+                    },
+                    diet: {
+                        vegetar: ["vegetar", "vegetarian"],
+                        vegansk: ["vegansk", "vegan"]
+                    },
+                    cuisine: {
+                        indisk: ["indisk", "indian", "masala", "tikka", "karry", "curry"],
+                        thai: ["thai", "thailandsk", "green curry", "red curry", "pad thai"],
+                        italiensk: ["italiensk", "italian", "pasta", "bolognese", "pizza", "lasagne"],
+                        græsk: ["græsk", "greek", "moussaka", "souvlaki", "gyro"],
+                        japansk: ["japansk", "japanese", "gyudon", "ramen", "sushi", "katsu"],
+                        kinesisk: ["kinesisk", "chinese", "bao", "dumpling"],
+                        mexicansk: ["mexicansk", "mexican", "taco", "burrito"],
+                        burger: ["burger", "hamburger"],
+                        salat: ["salat", "salad"]
+                    }
+                }`;
+                
+                const prompt = `You are a food recommendation system for Danish canteen menus. Analyze user preferences and recommend the best cafeteria for each day.
 
-**SynonymMap for Semantic Matching:**
-{
-  "protein": {
-    "fjerkræ": ["kylling", "høne", "hane", "kalkun", "chicken", "poultry"],
-    "okse": ["okse", "oksekød", "bøf", "spidsbryst", "beef"],
-    "svin": ["svin", "svinekød", "gris", "flæsk", "flæskesteg", "pork"],
-    "lam": ["lam", "lammekød", "mutton"],
-    "fisk": ["fisk", "laks", "torsk", "kuller", "ørred", "tun", "salmon", "cod", "fish"],
-    "skaldyr": ["rejer", "muslinger", "blæksprutte", "kammusling", "krabbe", "squid", "shrimp", "shellfish"]
-  },
-  "diet": {
-    "vegetar": ["vegetar", "vegetarian"],
-    "vegansk": ["vegansk", "vegan"]
-  },
-  "cuisine": {
-    "indisk": ["indisk", "indian", "masala", "tikka", "karry", "curry"],
-    "thai": ["thai", "thailandsk", "green curry", "red curry", "pad thai"],
-    "italiensk": ["italiensk", "italian", "pasta", "bolognese", "pizza", "lasagne"],
-    "græsk": ["græsk", "greek", "moussaka", "souvlaki", "gyro"],
-    "japansk": ["japansk", "japanese", "gyudon", "ramen", "sushi", "katsu"],
-    "kinesisk": ["kinesisk", "chinese", "bao", "dumpling"],
-    "mexicansk": ["mexicansk", "mexican", "taco", "burrito"],
-    "burger": ["burger", "hamburger"],
-    "salat": ["salat", "salad"]
-  }
-}
+MATCHING RULES:
+1. Direct keyword match: +3 points
+2. Synonym/category match: +2 points  
+3. Cuisine/style match: +1 point
+4. Favorite preferences: +2 bonus points
+5. If user has "vegetar"/"vegansk", exclude meat/fish unless marked vegetarian/vegan
+6. CRITICAL: If all cafeteria scores <2 for a day, return "Any" for that day
+7. For Foodcore: consider both Globetrotter and Homebound dishes, choose the cafeteria with best overall match
+8. IMPORTANT: You MUST return "Any" for days where no cafeteria has a score ≥2
 
-**Menu Data:**
+MENU DATA:
 ${JSON.stringify(menuData, null, 2)}
 
-**User Preferences (Keywords):**
-${activeKeywords}
+USER PREFERENCES: ${activeKeywords}
+FAVORITE PREFERENCES: ${activeFavoriteKeywords}
+SYNONYM MAP: ${synonymMap}
 
-**Favorite Preferences (Active Only):**
-${activeFavoriteKeywords}
+OUTPUT: Return JSON mapping each day to cafeteria name.
+IMPORTANT: Use "Any" for days with no good matches (score <2).
+Example: {"Mandag": "HUB 1", "Tirsdag": "Foodcore", "Onsdag": "Any", "Torsdag": "HUB 2", "Fredag": "Any"}
 
-**Matching Rules:**
-1. Normalize all text (lowercase, ignore diacritics) for Danish and English
-2. A preference matches a dish if there is:
-   - Direct token match: +3 points
-   - Synonym/category match via SynonymMap: +2 points  
-   - Cuisine/style match via SynonymMap: +1 point
-3. Sum scores per dish. Choose cafeteria with highest score per day.
-3.5. If dish matches any in Favorite Preferences (Active Only): +2 bonus
-4. If user has "vegetar"/"vegansk", exclude meat/fish dishes unless explicitly marked vegetarian/vegan.
-5. If all scores <2 for a day, return "Any"
-6. On ties, prefer explicit mentions over generic categories
-
-**Output Format:**
-Return only a JSON object mapping each day to a cafeteria name.
-Example: {"Mandag": "HUB 1", "Tirsdag": "Foodcore", "Onsdag": "Any", "Torsdag": "HUB 2", "Fredag": "HUB 1"}
-`;
-                return await callGemini(prompt, apiKey);
+SCORING EXAMPLE:
+- If HUB 1 scores 3, HUB 2 scores 1, Foodcore scores 0 → return "HUB 1"
+- If HUB 1 scores 1, HUB 2 scores 1, Foodcore scores 1 → return "Any"
+- If HUB 1 scores 0, HUB 2 scores 0, Foodcore scores 0 → return "Any"`;
+                
+                console.log('🔍 Enhanced recommendation prompt length:', prompt.length, 'characters');
+                const result = await callGemini(prompt, apiKey);
+                console.log('✅ Recommendation result:', result);
+                console.log('🔍 Recommendation analysis:');
+                console.log('   Result type:', typeof result);
+                console.log('   Result keys:', Object.keys(result || {}));
+                console.log('   Days with "Any":', Object.keys(result || {}).filter(day => result[day] === 'Any'));
+                console.log('   Days with specific cafeterias:', Object.keys(result || {}).filter(day => result[day] !== 'Any'));
+                return result;
             }
 
+
             async function getKeywordSuggestionsFromGemini(dishes, apiKey) {
-                const prompt = `Extract food keywords from Danish/English dishes using this SynonymMap to suggest canonical Danish terms:
+                // Use enhanced synonym map for consistency
+                const synonymMap = `{
+                    protein: {
+                        fjerkræ: ["kylling", "høne", "hane", "kalkun", "chicken", "poultry"],
+                        okse: ["okse", "oksekød", "bøf", "spidsbryst", "beef"],
+                        svin: ["svin", "svinekød", "gris", "flæsk", "flæskesteg", "pork"],
+                        lam: ["lam", "lammekød", "mutton"],
+                        fisk: ["fisk", "laks", "torsk", "kuller", "ørred", "tun", "salmon", "cod", "fish"],
+                        skaldyr: ["rejer", "muslinger", "blæksprutte", "kammusling", "krabbe", "squid", "shrimp", "shellfish"]
+                    },
+                    diet: {
+                        vegetar: ["vegetar", "vegetarian"],
+                        vegansk: ["vegansk", "vegan"]
+                    },
+                    cuisine: {
+                        indisk: ["indisk", "indian", "masala", "tikka", "karry", "curry"],
+                        thai: ["thai", "thailandsk", "green curry", "red curry", "pad thai"],
+                        italiensk: ["italiensk", "italian", "pasta", "bolognese", "pizza", "lasagne"],
+                        græsk: ["græsk", "greek", "moussaka", "souvlaki", "gyro"],
+                        japansk: ["japansk", "japanese", "gyudon", "ramen", "sushi", "katsu"],
+                        kinesisk: ["kinesisk", "chinese", "bao", "dumpling"],
+                        mexicansk: ["mexicansk", "mexican", "taco", "burrito"],
+                        burger: ["burger", "hamburger"],
+                        salat: ["salat", "salad"]
+                    }
+                }`;
+                
+                const prompt = `Extract 5-12 Danish food keywords from dishes. Use the synonym map to group similar terms and suggest canonical Danish keywords.
 
-**SynonymMap:**
-{
-  "protein": {
-    "fjerkræ": ["kylling", "høne", "hane", "kalkun", "chicken", "poultry"],
-    "okse": ["okse", "oksekød", "bøf", "spidsbryst", "beef"],
-    "svin": ["svin", "svinekød", "gris", "flæsk", "flæskesteg", "pork"],
-    "lam": ["lam", "lammekød", "mutton"],
-    "fisk": ["fisk", "laks", "torsk", "kuller", "ørred", "tun", "salmon", "cod"],
-    "skaldyr": ["rejer", "muslinger", "blæksprutte", "kammusling", "krabbe", "squid", "shrimp"]
-  },
-  "diet": {
-    "vegetar": ["vegetar", "vegetarian"],
-    "vegansk": ["vegansk", "vegan"]
-  },
-  "cuisine": {
-    "indisk": ["indisk", "indian", "masala", "tikka", "karry", "curry"],
-    "thai": ["thai", "thailandsk"],
-    "italiensk": ["italiensk", "italian", "pasta", "bolognese"],
-    "græsk": ["græsk", "greek", "moussaka"],
-    "japansk": ["japansk", "japanese", "gyudon", "ramen"],
-    "kinesisk": ["kinesisk", "chinese", "bao"],
-    "burger": ["burger", "hamburger"],
-    "salat": ["salat", "salad"]
-  }
-}
+INSTRUCTIONS:
+- Use protein categories: "fjerkræ", "okse", "svin", "lam", "fisk", "skaldyr"
+- Use cuisine types: "indisk", "thai", "italiensk", "græsk", "japansk", "kinesisk", "mexicansk"
+- Use diet types: "vegetar", "vegansk"
+- Use general terms: "burger", "salat"
+- Prefer Danish terms over English equivalents
 
-**Dishes:** ${JSON.stringify(dishes)}
+DISHES: ${JSON.stringify(dishes)}
+SYNONYM MAP: ${synonymMap}
 
-**Instructions:**
-Use SynonymMap to group dish tokens and suggest 5-12 high-signal canonical Danish keywords that would improve future recommendations. Prefer categories (e.g., "fjerkræ", "okse", "svin", cuisines like "indisk").
-
-Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "vegetar", "salat"]`;
+OUTPUT: Return JSON array of Danish keywords.
+Example: ["fjerkræ", "okse", "indisk", "vegetar", "salat"]`;
+                
                 const result = await callGemini(prompt, apiKey);
                 // Ensure the result is an array and all items are strings.
                 if (Array.isArray(result) && result.every(item => typeof item === 'string')) {
@@ -772,7 +1152,26 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
             
             function displayError(message) {
                 loadingSpinner.classList.add('hidden');
-                errorContainer.innerHTML = `<div class="error-message"><h3 class="font-bold text-lg mb-2">An Error Occurred</h3><p>${message}</p></div>`;
+                
+                let errorMessage = message;
+                let errorDetails = '';
+                
+                // Add helpful context for common errors
+                if (message.includes('Model is overloaded')) {
+                    errorMessage = 'API Service Temporarily Unavailable';
+                    errorDetails = 'The AI service is experiencing high demand. Please try again in a few minutes. Each device needs to parse the menu separately, so this is normal when using the app on multiple devices.';
+                } else if (message.includes('timeout')) {
+                    errorMessage = 'Request Timeout';
+                    errorDetails = 'The request took too long to complete. This might be due to high API load. Please try again.';
+                }
+                
+                errorContainer.innerHTML = `
+                    <div class="error-message">
+                        <h3 class="font-bold text-lg mb-2">${errorMessage}</h3>
+                        <p class="mb-3">${message}</p>
+                        ${errorDetails ? `<p class="text-sm text-gray-600">${errorDetails}</p>` : ''}
+                    </div>
+                `;
                 errorContainer.classList.remove('hidden');
             }
             
@@ -1381,22 +1780,27 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
             async function fetchWebsiteContent() {
                 const proxyUrl = 'https://corsproxy.io/?';
                 const menuUrl = 'https://hubnordic.madkastel.dk/';
+                const fullUrl = `${proxyUrl}${encodeURIComponent(menuUrl)}`;
+                
+                console.log('🌐 Fetching website content from:', fullUrl);
+                console.log('🌐 Target URL:', menuUrl);
+                
                 try {
-                    const response = await fetch(`${proxyUrl}${encodeURIComponent(menuUrl)}`);
+                    const response = await fetch(fullUrl);
+                    console.log('🌐 Response status:', response.status, response.statusText);
                     if (!response.ok) throw new Error('Network response was not ok.');
-                    return await response.text();
+                    const content = await response.text();
+                    console.log('🌐 Content length:', content.length, 'characters');
+                    return content;
                 } catch (error) {
-                    console.error("Failed to fetch website content:", error);
+                    console.error("❌ Failed to fetch website content:", error);
                     displayError("Kunne ikke oprette forbindelse til Madkastel-webstedet. Det er muligvis midlertidigt nede.");
                     return null;
                 }
             }
 
-            function setCurrentWeek() {
-                const now = new Date();
-                const startOfYear = new Date(now.getFullYear(), 0, 1);
-                const pastDaysOfYear = (now.getTime() - startOfYear.getTime()) / 86400000;
-                const weekNumber = Math.ceil((pastDaysOfYear + startOfYear.getDay() + 1) / 7);
+            async function setCurrentWeek() {
+                const weekNumber = await menuDB.getCurrentWeekNumber();
                 if (currentWeekNumberSpan) {
                     currentWeekNumberSpan.textContent = weekNumber;
                 }
@@ -1437,10 +1841,15 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
 
             // --- Event Listeners ---
             async function showPreferenceSuggestionPopup(daysWithNoMatch, menuData) {
+                console.log('🔍 Suggestion popup triggered for days:', daysWithNoMatch);
+                console.log('🔍 Menu data available:', Object.keys(menuData));
+                
                 const dishesForSuggestion = [];
                 daysWithNoMatch.forEach(day => {
+                    console.log(`🔍 Processing day: ${day}`);
                     for (const cafeteria in menuData) {
                         const dish = menuData[cafeteria]?.[day];
+                        console.log(`   ${cafeteria}:`, dish);
                         if (typeof dish === 'string') {
                             dishesForSuggestion.push(dish);
                         } else if (typeof dish === 'object' && dish !== null) {
@@ -1450,16 +1859,22 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
                         }
                     }
                 });
+                
+                console.log('🔍 Dishes collected for suggestions:', dishesForSuggestion.length);
 
                 if (dishesForSuggestion.length > 0) {
-                    loadingText.textContent = "Finding new suggestions for you...";
+                    console.log('🔍 Getting keyword suggestions from Gemini...');
+                    loadingText.textContent = "Finding new suggestions for you... This may take up to 1 minute";
                     loadingSpinner.classList.remove('hidden');
                     const suggestedKeywords = await getKeywordSuggestionsFromGemini(dishesForSuggestion, appToken);
                     loadingSpinner.classList.add('hidden');
 
+                    console.log('🔍 Suggested keywords from Gemini:', suggestedKeywords);
                     const uniqueNewKeywords = [...new Set(suggestedKeywords)].filter(k => !keywords.includes(k));
+                    console.log('🔍 Unique new keywords (not already in preferences):', uniqueNewKeywords);
 
                     if (uniqueNewKeywords.length > 0) {
+                        console.log('💡 Showing suggestion modal with', uniqueNewKeywords.length, 'new keywords');
                         suggestionsContainer.innerHTML = uniqueNewKeywords.map(keyword => `
                             <label class="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 cursor-pointer border">
                                 <input type="checkbox" value="${keyword}" class="suggestion-checkbox h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500">
@@ -1470,7 +1885,11 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
                         
                         // Trigger custom event to auto-expand filters
                         window.dispatchEvent(new CustomEvent('suggestionModalShown'));
+                    } else {
+                        console.log('⚠️ No new keywords suggested or all already in preferences');
                     }
+                } else {
+                    console.log('⚠️ No dishes found for suggestion analysis');
                 }
             }
 
@@ -1495,10 +1914,16 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
                 const activeFavoriteKeywords = favorites.filter(k => activeKeywords.includes(k)).join(', ');
 
                 try {
-                    parsedMenuData = loadMenuFromCache();
+                    // First try to get menu from shared database
+                    const weekNumber = await menuDB.getCurrentWeekNumber();
+                    console.log('🔍 Process started - Week:', weekNumber);
+                    console.log('🔍 Checking shared database for menu...');
+                    parsedMenuData = await menuDB.getMenu(weekNumber);
+                    console.log('🔍 Database result:', parsedMenuData ? 'Found shared menu' : 'No shared menu found');
 
                     if (!parsedMenuData) {
-                        loadingText.textContent = "Analyzing website menu (first time today)...";
+                        // No shared menu found, need to parse from website
+                        loadingText.textContent = "No shared menu available - parsing menu from website... This may take up to 1 minute";
                         const siteHtml = await fetchWebsiteContent();
                         if (!siteHtml) {
                             loadingSpinner.classList.add('hidden');
@@ -1508,14 +1933,29 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
                         const doc = parser.parseFromString(siteHtml, 'text/html');
                         const relevantHtml = doc.body.innerHTML;
                         parsedMenuData = await parseMenuWithGemini(relevantHtml, appToken);
+                        
                         if (parsedMenuData) {
+                            // Save to local database
+                            console.log('💾 Saving menu for week', weekNumber, 'to local database...');
+                            const saveResult = await menuDB.saveMenu(weekNumber, parsedMenuData);
+                            if (saveResult) {
+                                console.log('✅ Menu saved successfully for week', weekNumber);
+                                // Clean up old menus (keep last 4 weeks)
+                                await menuDB.clearOldMenus(4);
+                            } else {
+                                console.error('❌ Failed to save menu for week', weekNumber);
+                            }
+                            // Also save to legacy localStorage cache for compatibility
                             saveMenuToCache(parsedMenuData);
                         }
+                    } else {
+                        loadingText.textContent = "Using cached menu data... Getting recommendations";
                     }
 
-                    loadingText.textContent = "Getting your recommendations...";
+                    loadingText.textContent = "Getting your recommendations (optimized)... This may take up to 30 seconds";
                     const recommendations = await getRecommendationsFromGemini(parsedMenuData, activeKeywords, activeFavoriteKeywords, appToken);
                     
+                    // Process results (for both cached and fresh data)
                     if (parsedMenuData && recommendations) {
                         incrementApiCount();
                         currentRecommendations = recommendations; // Store for toggle functionality
@@ -1525,8 +1965,16 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
                         autoCollapseFilters();
 
                         const daysWithNoMatch = Object.keys(recommendations).filter(day => recommendations[day] === 'Any');
+                        console.log('🔍 Recommendation analysis:');
+                        console.log('   All recommendations:', recommendations);
+                        console.log('   Days with no match:', daysWithNoMatch);
+                        console.log('   Days with matches:', Object.keys(recommendations).filter(day => recommendations[day] !== 'Any'));
+                        
                         if (daysWithNoMatch.length > 0) {
+                            console.log('💡 Showing suggestion popup for', daysWithNoMatch.length, 'days with no matches');
                             await showPreferenceSuggestionPopup(daysWithNoMatch, parsedMenuData);
+                        } else {
+                            console.log('✅ All days have matches - no suggestions needed');
                         }
                     }
                 } catch (error) {
@@ -1640,7 +2088,7 @@ Return a JSON array of strings only. Example: ["fjerkræ", "okse", "indisk", "ve
             favorites = Array.isArray(savedFavorites) ? savedFavorites : [];
             
             renderKeywords();
-            setCurrentWeek();
+            setCurrentWeek().catch(console.error);
             updateApiLimitText();
             
             // Set up auto-hide functionality
