@@ -3,9 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Canteen Menu Recommender</title>
+    <title>Menu Recommender</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <!-- html2canvas for taking screenshots -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- Google Maps Places API -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCM6V626x8UTz90AMX2y6ujdC1DGqWvaWI&libraries=places"></script>
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, doc, setDoc, getDoc, getDocs } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
+        
+        // Your Firebase config - real configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyAN65JyFOx0Xz5X9xGInDu4yOlg5NfOb5c",
+            authDomain: "kantineprojekt-55d47.firebaseapp.com",
+            projectId: "kantineprojekt-55d47",
+            storageBucket: "kantineprojekt-55d47.firebasestorage.app",
+            messagingSenderId: "121410542640",
+            appId: "1:121410542640:web:0bbd85850ccc9e2918e1f5",
+            measurementId: "G-NE3KKYSHCV"
+        };
+        
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const functions = getFunctions(app, 'europe-west1');
+        
+        // Make Firebase available globally
+        window.firebaseDb = db;
+        window.firebaseFunctions = functions;
+        window.firebaseCollection = collection;
+        window.firebaseDoc = doc;
+        window.firebaseSetDoc = setDoc;
+        window.firebaseGetDoc = getDoc;
+        window.firebaseGetDocs = getDocs;
+        window.httpsCallable = httpsCallable;
+    </script>    <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -225,9 +260,15 @@
             }
         }
         
-        /* Hide original rocket while flying */
+        /* Hide original rocket and smoke effect while flying */
         .rocket-favorite-btn.rocket-is-flying .rocket-icon {
-            opacity: 0;
+            opacity: 0 !important;
+            visibility: hidden !important;
+        }
+        
+        .rocket-favorite-btn.rocket-is-flying .smoke-effect::before {
+            opacity: 0 !important;
+            visibility: hidden !important;
         }
     </style>
 </head>
@@ -240,8 +281,19 @@
             <div class="flex items-center gap-4">
                 <img src="https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=800&auto=format&fit=crop" alt="A bowl of healthy food" class="h-12 w-12 rounded-full object-cover cursor-pointer hover:opacity-80 transition-opacity" onclick="toggleDebugMode()" title="Click to toggle debug view">
                 <div>
-                    <h1 class="text-2xl font-bold text-gray-800">Canteen Menu</h1>
-                    <p class="text-gray-500">Your Weekly Dining Recommendations</p>
+                    <div class="flex items-center gap-4 mb-2">
+                        <h1 class="text-2xl font-bold text-gray-800">Menu</h1>
+                    </div>
+                    <!-- Tab Navigation -->
+                    <div class="flex bg-gray-100 rounded-lg p-1 mb-2">
+                        <button id="canteen-tab" class="flex-1 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 shadow-sm transition-all duration-200">
+                            🏢 Canteen Menu
+                        </button>
+                        <button id="restaurant-tab" class="flex-1 px-4 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 transition-all duration-200">
+                            🍽️ Restaurant Menu
+                        </button>
+                    </div>
+                    <p id="tab-description" class="text-gray-500">Your Weekly Dining Recommendation(s)</p>
                 </div>
             </div>
             <div class="flex flex-col items-end gap-2">
@@ -287,9 +339,37 @@
             <p id="api-limit-text" class="text-sm text-gray-500 mt-2"></p>
         </div>
 
-        <!-- Menu Grid -->
-        <main id="menu-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 hidden">
-            <!-- Menu columns will be dynamically inserted here -->
+        <!-- Tab Content Areas -->
+        <main class="flex-1">
+            <!-- Canteen Menu Content -->
+            <div id="canteen-content" class="tab-content">
+                <div id="menu-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <!-- Menu columns will be dynamically inserted here -->
+                </div>
+            </div>
+            
+            <!-- Restaurant Menu Content -->
+            <div id="restaurant-content" class="tab-content hidden">
+                <!-- Restaurant Loading State -->
+                <div id="restaurant-loading" class="text-center py-20">
+                    <div class="text-6xl mb-4">🍽️</div>
+                    <h3 class="text-2xl font-semibold text-gray-700 mb-4">Restaurant Menu</h3>
+                    <p class="text-gray-500 mb-6">Discover nearby restaurants and get personalized menu recommendations</p>
+                    <button id="find-restaurants-btn" class="px-6 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-medium">
+                        🎯 Find Nearby Restaurants
+                    </button>
+                </div>
+                
+                <!-- Restaurant Menu Grid (similar to canteen menu) -->
+                <div id="restaurant-menu-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 hidden">
+                    <!-- Restaurant menu columns will be dynamically inserted here -->
+                </div>
+                
+                <!-- Restaurant Selection Grid -->
+                <div id="restaurant-selection-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 hidden">
+                    <!-- Restaurant selection cards will be dynamically inserted here -->
+                </div>
+            </div>
         </main>
 
         <!-- Loading Spinner -->
@@ -441,9 +521,14 @@
                                     <p class="text-gray-500">Raw menu data from database</p>
                                 </div>
                             </div>
-                            <button onclick="toggleDebugMode()" class="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600">
-                                Back to App
-                            </button>
+                            <div class="flex gap-2">
+                                <button onclick="refreshSharedMenuData()" class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">
+                                    🔄 Refresh Data
+                                </button>
+                                <button onclick="toggleDebugMode()" class="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600">
+                                    Back to App
+                                </button>
+                            </div>
                         </header>
                         
                         <div id="debug-content" class="bg-white rounded-xl shadow-md p-6">
@@ -480,9 +565,12 @@
                     const currentWeek = await menuDB.getCurrentWeekNumber();
                     const allMenus = await menuDB.getAllMenus();
                     
+                    // Get shared restaurant menus
+                    const sharedRestaurantMenus = await getAllSharedRestaurantMenus();
+                    
                     const debugContent = document.getElementById('debug-content');
                     
-                    if (allMenus.length === 0) {
+                    if (allMenus.length === 0 && sharedRestaurantMenus.length === 0) {
                         debugContent.innerHTML = `
                             <div class="text-center py-8">
                                 <div class="text-gray-400 mb-4">
@@ -501,20 +589,24 @@
                         <div class="space-y-6">
                             <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
                                 <h2 class="text-lg font-semibold text-blue-900 mb-2">Shared Database Status</h2>
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                                     <div>
                                         <span class="font-medium text-blue-800">Current Week:</span>
                                         <span class="text-blue-700">${currentWeek}</span>
                                     </div>
                                     <div>
-                                        <span class="font-medium text-blue-800">Shared Menus:</span>
+                                        <span class="font-medium text-blue-800">Canteen Menus:</span>
                                         <span class="text-blue-700">${allMenus.length}</span>
+                                    </div>
+                                    <div>
+                                        <span class="font-medium text-blue-800">Restaurant Menus:</span>
+                                        <span class="text-blue-700">${sharedRestaurantMenus.length}</span>
                                     </div>
                                 </div>
                             </div>
                             
                             <div class="space-y-4">
-                                <h2 class="text-lg font-semibold text-gray-800">🌐 Shared Menu Data</h2>
+                                <h2 class="text-lg font-semibold text-gray-800">🏢 Shared Canteen Menu Data</h2>
                                 ${allMenus.map(menu => `
                                     <div class="border border-gray-200 rounded-lg p-4 ${menu.week === currentWeek ? 'bg-green-50 border-green-200' : ''}">
                                         <div class="flex justify-between items-start mb-3">
@@ -537,6 +629,32 @@
                                     </div>
                                 `).join('')}
                             </div>
+                            
+                            <div class="space-y-4">
+                                <h2 class="text-lg font-semibold text-gray-800">🍽️ Shared Restaurant Menu Data</h2>
+                                ${sharedRestaurantMenus.length > 0 ? sharedRestaurantMenus.map(restaurant => `
+                                    <div class="border border-gray-200 rounded-lg p-4">
+                                        <div class="flex justify-between items-start mb-3">
+                                            <div>
+                                                <h3 class="font-semibold text-gray-800">${restaurant.restaurantName}</h3>
+                                                <p class="text-sm text-gray-600">
+                                                    ${restaurant.address} • Rating: ${restaurant.rating}/5 • Price Level: ${restaurant.priceLevel}
+                                                </p>
+                                                <p class="text-xs text-gray-500">
+                                                    Last updated: ${new Date(restaurant.lastUpdated).toLocaleString()}
+                                                </p>
+                                                ${restaurant.website ? `<p class="text-xs text-blue-600"><a href="${restaurant.website}" target="_blank">${restaurant.website}</a></p>` : ''}
+                                            </div>
+                                        </div>
+                                        <div class="bg-gray-50 rounded-lg p-3">
+                                            <h4 class="font-medium text-gray-700 mb-2">Menu Items:</h4>
+                                            <div class="text-sm text-gray-600">
+                                                ${restaurant.menuItems.length > 0 ? restaurant.menuItems.map(item => `<div class="mb-1">• ${item}</div>`).join('') : '<p class="italic text-gray-500">No menu items available</p>'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                `).join('') : '<p class="text-gray-500 italic">No restaurant menus found</p>'}
+                            </div>
                         </div>
                     `;
                     
@@ -555,6 +673,61 @@
                     `;
                 }
             }
+
+            // Refresh shared menu data function
+            window.refreshSharedMenuData = async function() {
+                try {
+                    console.log('🔄 Refreshing shared menu data...');
+                    await updateSharedMenuDataWithRestaurants();
+                    await loadDebugMenuData();
+                    console.log('✅ Shared menu data refreshed successfully');
+                } catch (error) {
+                    console.error('❌ Error refreshing shared menu data:', error);
+                }
+            };
+
+            // Test function for restaurant menu integration
+            window.testRestaurantMenuIntegration = async function() {
+                try {
+                    console.log('🧪 Testing restaurant menu integration...');
+                    
+                    // Test 1: Check if shared restaurant menu functions exist
+                    console.log('✅ Test 1: Functions exist');
+                    console.log('- saveRestaurantMenuToShared:', typeof saveRestaurantMenuToShared);
+                    console.log('- getSharedRestaurantMenu:', typeof getSharedRestaurantMenu);
+                    console.log('- getAllSharedRestaurantMenus:', typeof getAllSharedRestaurantMenus);
+                    console.log('- updateSharedMenuDataWithRestaurants:', typeof updateSharedMenuDataWithRestaurants);
+                    console.log('- getSharedMenuData:', typeof getSharedMenuData);
+                    
+                    // Test 2: Try to get all shared restaurant menus
+                    console.log('✅ Test 2: Fetching shared restaurant menus...');
+                    const restaurantMenus = await getAllSharedRestaurantMenus();
+                    console.log('Found', restaurantMenus.length, 'shared restaurant menus');
+                    
+                    // Test 3: Try to get shared menu data
+                    console.log('✅ Test 3: Fetching shared menu data...');
+                    const sharedData = await getSharedMenuData();
+                    if (sharedData) {
+                        console.log('Shared menu data found with', Object.keys(sharedData.restaurantMenus || {}).length, 'restaurant menus');
+                    } else {
+                        console.log('No shared menu data found');
+                    }
+                    
+                    // Test 4: Update shared menu data
+                    console.log('✅ Test 4: Updating shared menu data...');
+                    const updatedData = await updateSharedMenuDataWithRestaurants();
+                    if (updatedData) {
+                        console.log('Shared menu data updated successfully');
+                    }
+                    
+                    console.log('🎉 All tests completed successfully!');
+                    return true;
+                    
+                } catch (error) {
+                    console.error('❌ Test failed:', error);
+                    return false;
+                }
+            };
             
             async function fetchSharedMenuData() {
                 try {
@@ -761,71 +934,115 @@
             }
 
             // --- Shared Menu Database ---
+            // --- Shared Menu Database (Firestore) ---
             class SharedMenuDatabase {
                 constructor() {
+                    this.useFirestore = true; // Toggle between Firestore and GitHub
                     this.sharedMenuUrl = 'https://raw.githubusercontent.com/typond/kantine-app/main/shared-menu.json';
                 }
                 
                 async getCurrentWeekNumber() {
                     const now = new Date();
                     const startOfYear = new Date(now.getFullYear(), 0, 1);
-                    const pastDaysOfYear = (now.getTime() - startOfYear.getTime()) / 86400000;
-                    return Math.ceil((pastDaysOfYear + startOfYear.getDay() + 1) / 7);
+                    const days = Math.floor((now - startOfYear) / (24 * 60 * 60 * 1000));
+                    return Math.ceil((days + startOfYear.getDay() + 1) / 7);
                 }
                 
                 async getMenu(weekNumber) {
+                    if (this.useFirestore && window.firebaseDb) {
+                        return await this.getMenuFromFirestore(weekNumber);
+                    } else {
+                        return await this.getSharedMenu(weekNumber);
+                    }
+                }
+                
+                async getMenuFromFirestore(weekNumber) {
                     try {
-                        console.log('🔍 Checking shared menu data for week', weekNumber);
-                        const response = await fetch(this.sharedMenuUrl + '?t=' + Date.now()); // Cache bust
-                        if (!response.ok) {
-                            console.log('⚠️ Shared menu not available:', response.status);
+                        console.log('🔥 Fetching menu from Firestore for week', weekNumber);
+                        const docRef = window.firebaseDoc(window.firebaseDb, 'menus', weekNumber.toString());
+                        const docSnap = await window.firebaseGetDoc(docRef);
+                        
+                        if (docSnap.exists()) {
+                            const data = docSnap.data();
+                            console.log('✅ Menu found in Firestore:', data);
+                            return data.menu;
+                        } else {
+                            console.log('⚠️ No menu found in Firestore for week', weekNumber);
                             return null;
                         }
-                        
-                        const sharedData = await response.json();
-                        if (sharedData.menus && sharedData.menus[weekNumber]) {
-                            console.log('✅ Found shared menu for week', weekNumber);
-                            return sharedData.menus[weekNumber].menu;
-                        }
-                        
-                        console.log('⚠️ No shared menu found for week', weekNumber);
-                        return null;
                     } catch (error) {
-                        console.log('⚠️ Error fetching shared menu:', error.message);
+                        console.error('❌ Error fetching from Firestore:', error);
                         return null;
                     }
                 }
                 
                 async saveMenu(weekNumber, menuData) {
+                    if (this.useFirestore && window.firebaseDb) {
+                        return await this.saveMenuToFirestore(weekNumber, menuData);
+                    } else {
+                        return await this.saveMenuLocally(weekNumber, menuData);
+                    }
+                }
+                
+                async saveMenuToFirestore(weekNumber, menuData) {
                     try {
-                        console.log('💾 Saving menu to shared storage for week', weekNumber);
+                        console.log('🔥 Saving menu to Firestore for week', weekNumber);
                         
-                        // For now, we'll use a simple approach: save to localStorage as a backup
-                        // and show instructions for manual update to shared storage
                         const menuRecord = {
                             week: weekNumber,
                             menu: menuData,
                             timestamp: new Date().toISOString()
                         };
                         
-                        // Save to localStorage as backup
-                        localStorage.setItem(`menu_week_${weekNumber}`, JSON.stringify(menuRecord));
+                        const docRef = window.firebaseDoc(window.firebaseDb, 'menus', weekNumber.toString());
+                        await window.firebaseSetDoc(docRef, menuRecord);
                         
-                        // Show instructions for updating shared storage
-                        console.log('📝 Menu saved locally. To update shared storage:');
-                        console.log('1. Go to the GitHub repository');
-                        console.log('2. Edit shared-menu.json');
-                        console.log('3. Add the menu data for week', weekNumber);
+                        console.log('✅ Menu saved to Firestore successfully!');
                         
-                        // For now, return true to indicate "saved" (locally)
                         return true;
                     } catch (error) {
-                        console.error('Error saving menu:', error);
-                        return false;
+                        console.error('❌ Error saving to Firestore:', error);
+                        // Fallback to local storage
+                        return await this.saveMenuLocally(weekNumber, menuData);
                     }
                 }
                 
+                
                 async getAllMenus() {
+                    if (this.useFirestore && window.firebaseDb) {
+                        return await this.getAllMenusFromFirestore();
+                    } else {
+                        return await this.getAllMenusFromGitHub();
+                    }
+                }
+                
+                async getAllMenusFromFirestore() {
+                    try {
+                        console.log('🔥 Fetching all menus from Firestore');
+                        const querySnapshot = await window.firebaseGetDocs(window.firebaseCollection(window.firebaseDb, 'menus'));
+                        const menus = [];
+                        
+                        querySnapshot.forEach((doc) => {
+                            const data = doc.data();
+                            menus.push({
+                                week: data.week,
+                                menu: data.menu,
+                                timestamp: data.timestamp
+                            });
+                        });
+                        
+                        // Sort menus by week number (newest first)
+                        menus.sort((a, b) => b.week - a.week);
+                        
+                        console.log('✅ Found', menus.length, 'menus in Firestore');
+                        return menus;
+                    } catch (error) {
+                        console.error('❌ Error fetching all menus from Firestore:', error);
+                        return [];
+                    }
+                }
+                
+                async getAllMenusFromGitHub() {
                     try {
                         const response = await fetch(this.sharedMenuUrl + '?t=' + Date.now());
                         if (!response.ok) {
@@ -838,22 +1055,126 @@
                                 week: parseInt(week),
                                 menu: sharedData.menus[week].menu,
                                 timestamp: sharedData.menus[week].timestamp
-                            })).sort((a, b) => b.week - a.week);
+                            }));
                         }
-                        
                         return [];
                     } catch (error) {
-                        console.error('Error retrieving all menus:', error);
+                        console.error('❌ Error fetching menus from GitHub:', error);
                         return [];
                     }
                 }
                 
-                async clearOldMenus(keepWeeks = 4) {
-                    // This would need to be implemented in the shared storage system
-                    console.log('🗑️ Clear old menus functionality would need to be implemented in shared storage');
+                async getSharedMenu(weekNumber) {
+                    try {
+                        console.log('🌐 Fetching shared menu for week', weekNumber);
+                        const response = await fetch(this.sharedMenuUrl + '?t=' + Date.now());
+                        if (!response.ok) {
+                            console.log('⚠️ Shared menu not available:', response.status);
+                            return null;
+                        }
+                        
+                        const sharedData = await response.json();
+                        if (sharedData.menus && sharedData.menus[weekNumber]) {
+                            console.log('✅ Shared menu found for week', weekNumber);
+                            return sharedData.menus[weekNumber].menu;
+                        } else {
+                            console.log('⚠️ No shared menu data for week', weekNumber);
+                            return null;
+                        }
+                    } catch (error) {
+                        console.log('⚠️ Error fetching shared menu:', error.message);
+                        return null;
+                    }
                 }
-            }
-            
+                
+                async saveMenuLocally(weekNumber, menuData) {
+                    try {
+                        const menuRecord = {
+                            week: weekNumber,
+                            menu: menuData,
+                            timestamp: new Date().toISOString()
+                        };
+                        
+                        // Save to localStorage as backup
+                        localStorage.setItem(`menu_week_${weekNumber}`, JSON.stringify(menuRecord));
+                        
+                        // Create the updated shared data structure
+                        const updatedSharedData = {
+                            menus: {
+                                [weekNumber]: menuRecord
+                            },
+                            lastUpdated: new Date().toISOString(),
+                            currentWeek: weekNumber
+                        };
+                        
+                        // Show detailed instructions for updating shared storage
+                        console.log('📝 Menu saved locally. To update shared storage:');
+                        console.log('1. Go to: https://github.com/typond/kantine-app');
+                        console.log('2. Edit shared-menu.json');
+                        console.log('3. Replace the content with:');
+                        console.log(JSON.stringify(updatedSharedData, null, 2));
+                        console.log('4. Commit and push the changes');
+                        
+                        // Also show a user-friendly message
+                        this.showSharedStorageInstructions(updatedSharedData);
+                        
+                        return true;
+                    } catch (error) {
+                        console.error('Error saving menu locally:', error);
+                        return false;
+                    }
+                }
+                
+                showSharedStorageInstructions(updatedData) {
+                    // Create a temporary notification for the user
+                    const notification = document.createElement('div');
+                    notification.style.cssText = `
+                        position: fixed;
+                        top: 20px;
+                        right: 20px;
+                        background: #f0f8ff;
+                        border: 2px solid #007acc;
+                        border-radius: 8px;
+                        padding: 15px;
+                        max-width: 400px;
+                        z-index: 10000;
+                        font-family: Arial, sans-serif;
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    `;
+                    
+                    notification.innerHTML = `
+                        <h3 style="margin: 0 0 10px 0; color: #007acc;">📝 Update Shared Storage</h3>
+                        <p style="margin: 0 0 10px 0; font-size: 14px;">Menu saved locally. To share with other users:</p>
+                        <ol style="margin: 0 0 10px 0; padding-left: 20px; font-size: 14px;">
+                            <li>Go to <a href="https://github.com/typond/kantine-app" target="_blank">GitHub</a></li>
+                            <li>Edit shared-menu.json</li>
+                            <li>Replace content with the data below</li>
+                            <li>Commit & push changes</li>
+                        </ol>
+                        <details style="margin: 10px 0;">
+                            <summary style="cursor: pointer; font-weight: bold;">📄 Click to see JSON data</summary>
+                            <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px; font-size: 12px; overflow-x: auto; margin: 5px 0;">${JSON.stringify(updatedData, null, 2)}</pre>
+                        </details>
+                        <button onclick="this.parentElement.remove()" style="background: #007acc; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">Close</button>
+                    `;
+                    
+                    document.body.appendChild(notification);
+                    
+                    // Auto-remove after 30 seconds
+                    setTimeout(() => {
+                        if (notification.parentElement) {
+                            notification.remove();
+                        }
+                    }, 30000);
+                }
+                
+                async clearOldMenus(keepWeeks = 4) {
+                    console.log('🧹 Clearing old menus (keeping last', keepWeeks, 'weeks)');
+                    // This would need to be implemented in Firestore
+                    // For now, just log that it needs to be done
+                    console.log('📝 Note: Old menu cleanup needs to be implemented in Firestore');
+                }
+            }            
             // Initialize the shared database
             const menuDB = new SharedMenuDatabase();
             
@@ -1059,7 +1380,7 @@ ${siteHtml}`;
                     }
                 }`;
                 
-                const prompt = `You are a food recommendation system for Danish canteen menus. Analyze user preferences and recommend the best cafeteria for each day.
+                const prompt = `You are a food recommendation system for Danish menus. Analyze user preferences and recommend the best cafeteria for each day.
 
 MATCHING RULES:
 1. Direct keyword match: +3 points
@@ -1839,6 +2160,2185 @@ Example: ["fjerkræ", "okse", "indisk", "vegetar", "salat"]`;
                 }
             }
 
+            // --- Easter Egg: Nearby Restaurants Service ---
+            
+            // GPS Location Service with fallback
+            async function requestUserLocation() {
+                return new Promise((resolve, reject) => {
+                    if (!navigator.geolocation) {
+                        reject(new Error('Geolocation not supported by this browser'));
+                        return;
+                    }
+                    
+                    console.log('📍 Requesting user location...');
+                    
+                    // Try with high accuracy first
+                    navigator.geolocation.getCurrentPosition(
+                        (position) => {
+                            const location = {
+                                lat: position.coords.latitude,
+                                lng: position.coords.longitude
+                            };
+                            console.log('✅ Location obtained:', location);
+                            resolve(location);
+                        },
+                        (error) => {
+                            console.warn('⚠️ High accuracy location failed, trying low accuracy...', error);
+                            
+                            // Fallback: Try with low accuracy
+                            navigator.geolocation.getCurrentPosition(
+                                (position) => {
+                                    const location = {
+                                        lat: position.coords.latitude,
+                                        lng: position.coords.longitude
+                                    };
+                                    console.log('✅ Location obtained (low accuracy):', location);
+                                    resolve(location);
+                                },
+                                (error2) => {
+                                    let errorMessage = 'Location access denied';
+                                    switch(error2.code) {
+                                        case error2.PERMISSION_DENIED:
+                                            errorMessage = 'Location access denied by user';
+                                            break;
+                                        case error2.POSITION_UNAVAILABLE:
+                                            errorMessage = 'Location information unavailable - try moving to a window or outside';
+                                            break;
+                                        case error2.TIMEOUT:
+                                            errorMessage = 'Location request timed out';
+                                            break;
+                                    }
+                                    console.error('❌ Location error:', errorMessage);
+                                    reject(new Error(errorMessage));
+                                },
+                                {
+                                    enableHighAccuracy: false,
+                                    timeout: 15000,
+                                    maximumAge: 300000 // Accept cached location up to 5 minutes old
+                                }
+                            );
+                        },
+                        {
+                            enableHighAccuracy: true,
+                            timeout: 10000,
+                            maximumAge: 60000
+                        }
+                    );
+                });
+            }
+            
+            // Manual location input fallback
+            async function requestManualLocation() {
+                return new Promise((resolve, reject) => {
+                    const lat = prompt('Enter your latitude (e.g., 55.6761):');
+                    const lng = prompt('Enter your longitude (e.g., 12.5683):');
+                    
+                    if (lat && lng) {
+                        const location = {
+                            lat: parseFloat(lat),
+                            lng: parseFloat(lng)
+                        };
+                        
+                        if (!isNaN(location.lat) && !isNaN(location.lng)) {
+                            console.log('✅ Manual location entered:', location);
+                            resolve(location);
+                        } else {
+                            reject(new Error('Invalid coordinates entered'));
+                        }
+                    } else {
+                        reject(new Error('Location entry cancelled'));
+                    }
+                });
+            }
+
+            // Google Maps Places API Integration
+            async function findNearbyRestaurants(location, radius = 10) {
+                return new Promise((resolve, reject) => {
+                    if (!window.google || !window.google.maps || !window.google.maps.places) {
+                        console.error('❌ Google Maps API not loaded:', {
+                            google: !!window.google,
+                            maps: !!(window.google && window.google.maps),
+                            places: !!(window.google && window.google.maps && window.google.maps.places)
+                        });
+                        reject(new Error('Google Maps Places API not loaded'));
+                        return;
+                    }
+
+                    console.log('🗺️ Searching for restaurants within', radius, 'meters of:', location);
+                    const service = new google.maps.places.PlacesService(document.createElement('div'));
+                    const request = {
+                        location: new google.maps.LatLng(location.lat, location.lng),
+                        radius: radius,
+                        type: 'restaurant'
+                    };
+                    
+                    console.log('🔍 Places API request:', request);
+                    
+                    service.nearbySearch(request, (results, status) => {
+                        console.log('📊 Places API response:', { status, resultsCount: results?.length || 0 });
+                        
+                        if (status === google.maps.places.PlacesServiceStatus.OK) {
+                            console.log('✅ Found', results.length, 'nearby restaurants');
+                            console.log('🏪 Restaurant names:', results.map(r => r.name));
+                            resolve(results);
+                        } else {
+                            console.error('❌ Places API error:', status);
+                            let errorMessage = `Places API error: ${status}`;
+                            
+                            // Provide more specific error messages
+                            switch(status) {
+                                case google.maps.places.PlacesServiceStatus.ZERO_RESULTS:
+                                    errorMessage = 'No restaurants found within the specified radius';
+                                    break;
+                                case google.maps.places.PlacesServiceStatus.OVER_QUERY_LIMIT:
+                                    errorMessage = 'API quota exceeded. Please try again later';
+                                    break;
+                                case google.maps.places.PlacesServiceStatus.REQUEST_DENIED:
+                                    errorMessage = 'API request denied. Check API key permissions';
+                                    break;
+                                case google.maps.places.PlacesServiceStatus.INVALID_REQUEST:
+                                    errorMessage = 'Invalid request parameters';
+                                    break;
+                            }
+                            
+                            reject(new Error(errorMessage));
+                        }
+                    });
+                });
+            }
+
+            async function getRestaurantDetails(placeId) {
+                return new Promise((resolve, reject) => {
+                    const service = new google.maps.places.PlacesService(document.createElement('div'));
+                    const request = {
+                        placeId: placeId,
+                        fields: ['name', 'website', 'formatted_address', 'rating', 'price_level', 'url', 'photos']
+                    };
+                    
+                    service.getDetails(request, (place, status) => {
+                        if (status === google.maps.places.PlacesServiceStatus.OK) {
+                            console.log('✅ Restaurant details obtained:', place.name);
+                            resolve({
+                                name: place.name,
+                                website: place.website,
+                                googleMapsUrl: place.url,
+                                address: place.formatted_address,
+                                rating: place.rating,
+                                priceLevel: place.price_level,
+                                photos: place.photos
+                            });
+                        } else {
+                            console.error('❌ Place details error:', status);
+                            reject(new Error(`Place details error: ${status}`));
+                        }
+                    });
+                });
+            }
+
+            // Menu Scraping Service
+            async function findMenuPage(baseUrl) {
+                const commonMenuPaths = [
+                    '/menu', '/menus', '/our-menu', '/food-menu', 
+                    '/restaurant-menu', '/dining-menu', '/food', '/dining',
+                    '/lunch', '/dinner', '/breakfast', '/cafe-menu'
+                ];
+                
+                const menuUrls = [];
+                
+                for (const path of commonMenuPaths) {
+                    try {
+                        const testUrl = baseUrl.replace(/\/$/, '') + path;
+                        const response = await fetch(testUrl, { 
+                            method: 'HEAD',
+                            mode: 'no-cors' // Handle CORS issues
+                        });
+                        menuUrls.push(testUrl);
+                    } catch (error) {
+                        // URL doesn't exist or CORS blocked, continue
+                    }
+                }
+                
+                return menuUrls;
+            }
+
+            async function scrapeMenuFromUrl(url) {
+                try {
+                    console.log('🕷️ Scraping menu from:', url);
+                    
+                    // Use CORS proxy for scraping - try corsproxy.io instead
+                    const proxyUrl = 'https://corsproxy.io/?';
+                    const response = await fetch(proxyUrl + encodeURIComponent(url));
+                    const text = await response.text();
+                    
+                    if (!text || text.length === 0) {
+                        console.warn('⚠️ No content received from proxy for:', url);
+                        return [];
+                    }
+                    
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(text, 'text/html');
+                    
+                    const menuItems = [];
+                    
+                    // Enhanced selectors for menu items
+                    const menuSelectors = [
+                        '.menu-item', '.dish', '.food-item', '.menu-dish',
+                        '.menu-title', '.item-name', '.food-name', '.menu-name',
+                        '[class*="price"]', '[class*="cost"]', '[class*="amount"]',
+                        'li:not([class*="nav"]):not([class*="menu"]):not([class*="footer"])',
+                        'h1:not([class*="nav"]):not([class*="header"])', 
+                        'h2:not([class*="nav"]):not([class*="header"])',
+                        'h3:not([class*="nav"]):not([class*="header"])',
+                        'p:not([class*="nav"]):not([class*="footer"])'
+                    ];
+                    
+                    for (const selector of menuSelectors) {
+                        const elements = doc.querySelectorAll(selector);
+                        elements.forEach(element => {
+                            const text = element.textContent.trim();
+                            
+                            // Filter for reasonable menu item length and content
+                            if (text.length > 5 && text.length < 300 && 
+                                !text.includes('©') && 
+                                !text.includes('Privacy') &&
+                                !text.includes('Terms') &&
+                                !text.includes('Contact') &&
+                                !text.includes('About') &&
+                                !text.includes('Home') &&
+                                !text.includes('Menu') &&
+                                !text.includes('Reservation') &&
+                                !text.match(/^\d+$/) && // Not just numbers
+                                !text.match(/^[A-Z\s]+$/) && // Not all caps
+                                text.includes(' ')) { // Must contain spaces
+                                
+                                menuItems.push({
+                                    text: text,
+                                    selector: selector,
+                                    url: url
+                                });
+                            }
+                        });
+                    }
+                    
+                    // Remove duplicates and return unique items
+                    const uniqueItems = [...new Set(menuItems.map(item => item.text))];
+                    console.log('✅ Scraped', uniqueItems.length, 'menu items from:', url);
+                    return uniqueItems;
+                    
+                } catch (error) {
+                    console.error('❌ Failed to scrape', url, ':', error);
+                    return [];
+                }
+            }
+
+            // NEW: Client-side screenshot-based restaurant menu scraping
+            async function scrapeRestaurantMenuWithLLM(websiteUrl, restaurantName, restaurantId) {
+                try {
+                    console.log('📸 Screenshot-based menu extraction for:', restaurantName);
+                    console.log('🌐 Website URL:', websiteUrl);
+                    
+                    // Try screenshot-based scraping first
+                    const screenshotMenuItems = await scrapeRestaurantMenuWithScreenshot(websiteUrl, restaurantName, restaurantId);
+                    
+                    if (screenshotMenuItems.length > 0) {
+                        console.log(`✅ Screenshot-based scraping successful: ${screenshotMenuItems.length} items`);
+                        return screenshotMenuItems;
+                    } else {
+                        console.log('⚠️ Screenshot method failed, falling back to HTML parsing');
+                        // Fall back to enhanced HTML parsing
+                        return await scrapeRestaurantMenuEnhanced(websiteUrl, restaurantName, restaurantId);
+                    }
+                    
+                } catch (error) {
+                    console.error('❌ Restaurant menu scraping failed:', error);
+                    // Fall back to enhanced HTML parsing
+                    return await scrapeRestaurantMenuEnhanced(websiteUrl, restaurantName, restaurantId);
+                }
+            }
+
+            // Iterative screenshot-based menu extraction with Gemini-guided navigation
+            async function scrapeRestaurantMenuWithScreenshot(websiteUrl, restaurantName, restaurantId) {
+                try {
+                    console.log('📸 Starting iterative menu extraction for:', restaurantName);
+                    console.log('🌐 Target URL:', websiteUrl);
+                    
+                    // Validate URL
+                    if (!websiteUrl || !websiteUrl.startsWith('http')) {
+                        throw new Error('Invalid website URL provided');
+                    }
+                    
+                    // Create a hidden iframe to load the website
+                    const iframe = document.createElement('iframe');
+                    iframe.style.position = 'absolute';
+                    iframe.style.left = '-9999px';
+                    iframe.style.top = '-9999px';
+                    iframe.style.width = '1920px';
+                    iframe.style.height = '1080px';
+                    iframe.style.border = 'none';
+                    document.body.appendChild(iframe);
+                    console.log('📱 Iframe created and added to DOM');
+                    
+                    // Wait for iframe to load
+                    console.log('⏳ Loading iframe with URL:', websiteUrl);
+                    await new Promise((resolve, reject) => {
+                        iframe.onload = () => {
+                            console.log('✅ Iframe loaded successfully');
+                            resolve();
+                        };
+                        iframe.onerror = (error) => {
+                            console.error('❌ Iframe load error:', error);
+                            reject(error);
+                        };
+                        iframe.src = websiteUrl;
+                        
+                        // Timeout after 15 seconds
+                        setTimeout(() => {
+                            console.log('⏰ Iframe load timeout after 15 seconds');
+                            reject(new Error('Iframe load timeout'));
+                        }, 15000);
+                    });
+                    
+                    // Wait for initial content to load
+                    console.log('⏳ Waiting for content to load...');
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    console.log('✅ Content load wait complete');
+                    
+                    const maxAttempts = 5;
+                    let attempts = 0;
+                    let currentUrl = websiteUrl;
+                    
+                    while (attempts < maxAttempts) {
+                        attempts++;
+                        console.log(`📸 Attempt ${attempts}/${maxAttempts}: Analyzing current page...`);
+                        
+                        // Take screenshot of current page
+                        const canvas = await html2canvas(iframe.contentDocument.body, {
+                            width: 1920,
+                            height: 1080,
+                            useCORS: true,
+                            allowTaint: true,
+                            scale: 0.5
+                        });
+                        
+                        const base64Image = canvas.toDataURL('image/png');
+                        
+                        // Analyze screenshot with Gemini
+                        const analysis = await analyzeScreenshotForNavigation(base64Image, restaurantName, attempts);
+                        
+                        console.log('🔍 Gemini analysis result:', analysis);
+                        
+                        if (analysis.isMenuPage) {
+                            console.log('✅ Menu page found! Extracting menu items...');
+                            
+                            // Clean up iframe
+                            document.body.removeChild(iframe);
+                            
+                            // Extract menu items from the menu page
+                            return analysis.menuItems.map(item => {
+                                let menuItem = item.name;
+                                if (item.price) {
+                                    menuItem += ` - ${item.price}`;
+                                }
+                                if (item.description) {
+                                    menuItem += ` (${item.description})`;
+                                }
+                                return menuItem;
+                            });
+                        }
+                        
+                        if (analysis.shouldClick && analysis.clickTarget) {
+                            console.log(`🖱️ Gemini suggests clicking: "${analysis.clickTarget.text}"`);
+                            
+                            // Try to click the suggested element
+                            const clickSuccess = await clickElementInIframe(iframe, analysis.clickTarget);
+                            
+                            if (clickSuccess) {
+                                console.log('✅ Click successful, waiting for page to load...');
+                                await new Promise(resolve => setTimeout(resolve, 3000));
+                                currentUrl = iframe.contentWindow.location.href;
+                                continue;
+                            } else {
+                                console.log('❌ Click failed, trying alternative approach...');
+                            }
+                        }
+                        
+                        // If no click target or click failed, try to find menu URLs
+                        if (analysis.menuUrls && analysis.menuUrls.length > 0) {
+                            console.log(`🔗 Found potential menu URLs: ${analysis.menuUrls.join(', ')}`);
+                            
+                            for (const menuUrl of analysis.menuUrls) {
+                                try {
+                                    const fullUrl = menuUrl.startsWith('http') ? menuUrl : new URL(menuUrl, currentUrl).href;
+                                    console.log(`🔄 Trying to navigate to: ${fullUrl}`);
+                                    
+                                    iframe.src = fullUrl;
+                                    await new Promise(resolve => setTimeout(resolve, 3000));
+                                    currentUrl = fullUrl;
+                                    break;
+                                } catch (urlError) {
+                                    console.log(`❌ Failed to navigate to ${menuUrl}:`, urlError.message);
+                                    continue;
+                                }
+                            }
+                        } else {
+                            console.log('❌ No navigation options found, stopping iteration');
+                            break;
+                        }
+                    }
+                    
+                    // Clean up iframe
+                    document.body.removeChild(iframe);
+                    
+                    console.log('⚠️ Could not find menu page after maximum attempts');
+                    return [];
+                    
+                } catch (error) {
+                    console.error('❌ Iterative screenshot scraping failed:', error);
+                    return [];
+                }
+            }
+
+            // Analyze screenshot for navigation decisions
+            async function analyzeScreenshotForNavigation(base64Image, restaurantName, attemptNumber) {
+                try {
+                    const imageData = base64Image.split(',')[1];
+                    
+                    const prompt = `Analyze this restaurant website screenshot and determine the next action.
+
+RESTAURANT: ${restaurantName}
+ATTEMPT: ${attemptNumber}/5
+
+INSTRUCTIONS:
+1. First, determine if this is a MENU PAGE with actual food items listed
+2. If NOT a menu page, look for buttons/links that might lead to the menu
+3. Look for text like "Menu", "Food", "Order", "Catering", "Dining", "Eat", etc.
+4. Also look for navigation menus, hamburger menus, or dropdown menus
+
+OUTPUT FORMAT (JSON only):
+{
+  "isMenuPage": true/false,
+  "confidence": 0.8,
+  "menuItems": [
+    {
+      "name": "Dish name",
+      "price": "Price if visible", 
+      "description": "Description if available"
+    }
+  ],
+  "shouldClick": true/false,
+  "clickTarget": {
+    "text": "Button/link text to click",
+    "type": "button/link/nav",
+    "reason": "Why this should be clicked"
+  },
+  "menuUrls": ["/menu", "/food", "/order", "menu.html"],
+  "analysis": "Brief explanation of what you see and what to do next"
+}
+
+If this IS a menu page, set isMenuPage=true and extract menu items.
+If this is NOT a menu page, set shouldClick=true and identify what to click.
+Return only valid JSON.`;
+
+                    const payload = {
+                        contents: [{
+                            parts: [
+                                { text: prompt },
+                                {
+                                    inline_data: {
+                                        mime_type: "image/png",
+                                        data: imageData
+                                    }
+                                }
+                            ]
+                        }],
+                        generationConfig: {
+                            temperature: 0.1,
+                            topK: 32,
+                            topP: 1,
+                            maxOutputTokens: 2048,
+                        }
+                    };
+
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${appToken}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Gemini API error: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    
+                    if (result.candidates?.[0]?.content?.parts?.[0]) {
+                        let jsonString = result.candidates[0].content.parts[0].text;
+                        jsonString = jsonString.replace(/```json\n/g, '').replace(/```/g, '');
+                        const analysis = JSON.parse(jsonString);
+                        
+                        return analysis;
+                    } else {
+                        throw new Error('Invalid response from Gemini API');
+                    }
+                    
+                } catch (error) {
+                    console.error('❌ Gemini navigation analysis failed:', error);
+                    return {
+                        isMenuPage: false,
+                        shouldClick: false,
+                        menuItems: [],
+                        menuUrls: []
+                    };
+                }
+            }
+
+            // Click element in iframe based on Gemini's suggestion
+            async function clickElementInIframe(iframe, clickTarget) {
+                try {
+                    const doc = iframe.contentDocument;
+                    const win = iframe.contentWindow;
+                    
+                    // Try multiple strategies to find and click the element
+                    const strategies = [
+                        // Strategy 1: Find by text content
+                        () => {
+                            const elements = doc.querySelectorAll('*');
+                            for (const element of elements) {
+                                if (element.textContent && element.textContent.trim().toLowerCase().includes(clickTarget.text.toLowerCase())) {
+                                    return element;
+                                }
+                            }
+                            return null;
+                        },
+                        
+                        // Strategy 2: Find buttons with menu-related text
+                        () => {
+                            const buttons = doc.querySelectorAll('button, a, [role="button"]');
+                            for (const button of buttons) {
+                                const text = button.textContent?.toLowerCase() || '';
+                                if (text.includes('menu') || text.includes('food') || text.includes('order') || 
+                                    text.includes('dining') || text.includes('eat') || text.includes('catering')) {
+                                    return button;
+                                }
+                            }
+                            return null;
+                        },
+                        
+                        // Strategy 3: Find navigation elements
+                        () => {
+                            const navElements = doc.querySelectorAll('nav a, .nav a, .menu a, .navigation a');
+                            for (const nav of navElements) {
+                                const text = nav.textContent?.toLowerCase() || '';
+                                if (text.includes('menu') || text.includes('food') || text.includes('order')) {
+                                    return nav;
+                                }
+                            }
+                            return null;
+                        },
+                        
+                        // Strategy 4: Find hamburger menu
+                        () => {
+                            return doc.querySelector('.hamburger, .menu-toggle, .nav-toggle, [class*="hamburger"], [class*="menu-toggle"]');
+                        }
+                    ];
+                    
+                    for (const strategy of strategies) {
+                        const element = strategy();
+                        if (element) {
+                            console.log(`🖱️ Found clickable element: ${element.tagName} with text "${element.textContent?.trim()}"`);
+                            
+                            // Scroll element into view
+                            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                            
+                            // Click the element
+                            element.click();
+                            
+                            return true;
+                        }
+                    }
+                    
+                    console.log('❌ Could not find clickable element for:', clickTarget.text);
+                    return false;
+                    
+                } catch (error) {
+                    console.error('❌ Error clicking element in iframe:', error);
+                    return false;
+                }
+            }
+
+            // Analyze screenshot with Gemini API
+            async function analyzeScreenshotWithGemini(base64Image, restaurantName) {
+                try {
+                    // Remove data URL prefix
+                    const imageData = base64Image.split(',')[1];
+                    
+                    const prompt = `Analyze this restaurant website screenshot and extract ONLY actual food menu items.
+
+RESTAURANT: ${restaurantName}
+
+CRITICAL INSTRUCTIONS:
+1. ONLY extract actual food dishes, meals, and drinks - NOT navigation, FAQ, contact info, or general text
+2. Look for items that are clearly food/drinks with names like "Pizza", "Burger", "Pasta", "Coffee", etc.
+3. Ignore navigation menus, footer links, FAQ text, contact information, opening hours, etc.
+4. Look for prices in any currency (DKK, €, $, etc.) next to food items
+5. Focus on the main content area, not headers, footers, or sidebars
+6. If you see a "Menu" button or link, that's navigation - don't extract it as a food item
+
+WHAT TO EXTRACT:
+- Food dishes (pizza, burgers, pasta, salads, etc.)
+- Drinks (coffee, beer, wine, soft drinks, etc.)
+- Desserts (ice cream, cake, etc.)
+- Appetizers and sides
+
+WHAT TO IGNORE:
+- Navigation links ("Menu", "About", "Contact", etc.)
+- FAQ text and questions
+- Contact information and addresses
+- Opening hours and location info
+- General website text and descriptions
+
+OUTPUT FORMAT (JSON only):
+{
+  "menuItems": [
+    {
+      "name": "Actual food/drink name",
+      "price": "Price if visible",
+      "description": "Description if available",
+      "category": "Category (appetizer, main, dessert, drink, etc.)"
+    }
+  ],
+  "hasMenuButton": true/false,
+  "menuButtonText": "text of menu button if found",
+  "confidence": 0.8
+}
+
+Return only valid JSON. If no actual food items are found, return empty array.`;
+
+                    const payload = {
+                        contents: [{
+                            parts: [
+                                { text: prompt },
+                                {
+                                    inline_data: {
+                                        mime_type: "image/png",
+                                        data: imageData
+                                    }
+                                }
+                            ]
+                        }],
+                        generationConfig: {
+                            temperature: 0.1,
+                            topK: 32,
+                            topP: 1,
+                            maxOutputTokens: 2048,
+                        }
+                    };
+
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${appToken}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Gemini API error: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    
+                    if (result.candidates?.[0]?.content?.parts?.[0]) {
+                        let jsonString = result.candidates[0].content.parts[0].text;
+                        jsonString = jsonString.replace(/```json\n/g, '').replace(/```/g, '');
+                        const analysis = JSON.parse(jsonString);
+                        
+                        console.log('✅ Gemini screenshot analysis complete:', analysis);
+                        
+                        // Convert to our format
+                        const menuItems = analysis.menuItems.map(item => {
+                            let menuItem = item.name;
+                            if (item.price) {
+                                menuItem += ` - ${item.price}`;
+                            }
+                            if (item.description) {
+                                menuItem += ` (${item.description})`;
+                            }
+                            return menuItem;
+                        });
+                        
+                        return menuItems;
+                    } else {
+                        throw new Error('Invalid response from Gemini API');
+                    }
+                    
+                } catch (error) {
+                    console.error('❌ Gemini screenshot analysis failed:', error);
+                    return [];
+                }
+            }
+
+            // FREE: Enhanced client-side menu extraction with multiple proxies
+            async function scrapeRestaurantMenuEnhanced(websiteUrl, restaurantName, restaurantId) {
+                try {
+                    console.log('🆓 Enhanced menu extraction for:', restaurantName);
+                    
+                    // Try multiple CORS proxies
+                    const proxies = [
+                        'https://corsproxy.io/?',
+                        'https://api.allorigins.win/get?url=',
+                        'https://cors-anywhere.herokuapp.com/',
+                        'https://thingproxy.freeboard.io/fetch/'
+                    ];
+                    
+                    let menuItems = [];
+                    
+                    for (const proxy of proxies) {
+                        try {
+                            console.log(`🔄 Trying proxy: ${proxy}`);
+                            
+                            if (proxy.includes('allorigins')) {
+                                // AllOrigins format
+                                const response = await fetch(proxy + encodeURIComponent(websiteUrl));
+                                const data = await response.json();
+                                
+                                if (data.contents) {
+                                    menuItems = await extractMenuFromHTML(data.contents, websiteUrl);
+                                    if (menuItems.length > 0) break;
+                                }
+                            } else {
+                                // Direct proxy format
+                                const response = await fetch(proxy + websiteUrl);
+                                const html = await response.text();
+                                
+                                if (html && html.length > 1000) {
+                                    menuItems = await extractMenuFromHTML(html, websiteUrl);
+                                    if (menuItems.length > 0) break;
+                                }
+                            }
+                        } catch (proxyError) {
+                            console.log(`❌ Proxy failed: ${proxy}`, proxyError.message);
+                            continue;
+                        }
+                    }
+                    
+                    // If proxies fail, try direct fetch (might work for some sites)
+                    if (menuItems.length === 0) {
+                        try {
+                            console.log('🔄 Trying direct fetch...');
+                            const response = await fetch(websiteUrl, { mode: 'no-cors' });
+                            // Note: no-cors mode has limitations, but worth trying
+                        } catch (directError) {
+                            console.log('❌ Direct fetch also failed');
+                        }
+                    }
+                    
+                    // If still no menu items, try to find menu URLs and scrape them
+                    if (menuItems.length === 0) {
+                        console.log('🔍 Trying to find menu-specific URLs...');
+                        menuItems = await findAndScrapeMenuPages(websiteUrl, proxies);
+                    }
+                    
+                    // If still no menu items, try alternative approaches for modern sites
+                    if (menuItems.length === 0) {
+                        console.log('🔍 Trying alternative scraping approaches...');
+                        menuItems = await tryAlternativeScraping(websiteUrl, proxies);
+                    }
+                    
+                    console.log(`✅ Extracted ${menuItems.length} menu items`);
+                    return menuItems;
+                    
+                } catch (error) {
+                    console.error('❌ Enhanced menu extraction failed:', error);
+                    return [];
+                }
+            }
+            
+            // Extract menu items from HTML content with prices and descriptions
+            async function extractMenuFromHTML(html, sourceUrl) {
+                try {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    
+                    const menuItems = [];
+                    
+                    // Enhanced selectors for menu items (including fast food chains)
+                    const selectors = [
+                        // Common menu item classes
+                        '.menu-item', '.dish', '.food-item', '.menu-dish', '.product',
+                        '.menu-title', '.item-name', '.food-name', '.menu-name',
+                        
+                        // Fast food specific selectors
+                        '.burger', '.sandwich', '.combo', '.meal', '.item',
+                        '.product-card', '.food-card', '.menu-card',
+                        '[data-testid*="product"]', '[data-testid*="item"]',
+                        '[data-testid*="menu"]', '[data-testid*="food"]',
+                        
+                        // Price-based selectors
+                        '[class*="price"]', '[class*="cost"]', '[class*="amount"]',
+                        '[class*="price"] span', '[class*="cost"] span',
+                        
+                        // Modern web app selectors
+                        '[role="button"]:not([class*="nav"])',
+                        '[role="listitem"]:not([class*="nav"])',
+                        'button:not([class*="nav"]):not([class*="header"])',
+                        
+                        // List items (but exclude navigation)
+                        'li:not([class*="nav"]):not([class*="footer"]):not([class*="header"])',
+                        
+                        // Headers that might be dish names
+                        'h1:not([class*="nav"]):not([class*="header"])',
+                        'h2:not([class*="nav"]):not([class*="header"])',
+                        'h3:not([class*="nav"]):not([class*="header"])',
+                        'h4:not([class*="nav"]):not([class*="header"])',
+                        'h5:not([class*="nav"]):not([class*="header"])',
+                        
+                        // Paragraphs with reasonable content
+                        'p:not([class*="nav"]):not([class*="footer"])',
+                        
+                        // Divs that might contain menu items
+                        'div[class*="menu"]', 'div[class*="dish"]', 'div[class*="food"]',
+                        'div[class*="product"]', 'div[class*="item"]', 'div[class*="card"]',
+                        
+                        // Span elements (common in modern sites)
+                        'span:not([class*="nav"]):not([class*="footer"])',
+                        
+                        // Link elements that might be menu items
+                        'a:not([class*="nav"]):not([href*="mailto"]):not([href*="tel"])'
+                    ];
+                    
+                    for (const selector of selectors) {
+                        try {
+                            const elements = doc.querySelectorAll(selector);
+                            elements.forEach(element => {
+                                const text = element.textContent?.trim();
+                                
+                                if (text && 
+                                    text.length > 5 && 
+                                    text.length < 300 &&
+                                    // Filter out navigation and non-menu content
+                                    !text.includes('©') &&
+                                    !text.includes('Privacy') &&
+                                    !text.includes('Terms') &&
+                                    !text.includes('Contact') &&
+                                    !text.includes('About') &&
+                                    !text.includes('Home') &&
+                                    !text.includes('Menu') &&
+                                    !text.includes('Reservation') &&
+                                    !text.includes('FAQ') &&
+                                    !text.includes('Spørgsmål') &&
+                                    !text.includes('Kontakt') &&
+                                    !text.includes('Om') &&
+                                    !text.includes('Nyheder') &&
+                                    !text.includes('Presse') &&
+                                    !text.includes('Find restaurant') &&
+                                    !text.includes('Åbningstider') &&
+                                    !text.includes('Adresse') &&
+                                    !text.includes('Hjælp') &&
+                                    !text.includes('Bestil') &&
+                                    !text.includes('App') &&
+                                    !text.includes('Sunset Boulevard') &&
+                                    !text.includes('Fields') &&
+                                    !text.includes('København') &&
+                                    !text.includes('Sjælland') &&
+                                    !text.includes('Midtjylland') &&
+                                    !text.includes('Nordjylland') &&
+                                    !text.includes('Sønderjylland') &&
+                                    !text.includes('Fyn') &&
+                                    !text.includes('Hovedstaden') &&
+                                    !text.includes('Skift land') &&
+                                    !text.includes('Tilmeld') &&
+                                    !text.includes('nyhedsbrev') &&
+                                    !text.includes('Smiley') &&
+                                    !text.includes('rapporter') &&
+                                    !text.includes('Ris og ros') &&
+                                    !text.includes('Business') &&
+                                    !text.includes('live chat') &&
+                                    !text.includes('køen') &&
+                                    !text.includes('restauranten') &&
+                                    !text.includes('svar') &&
+                                    !text.includes('spørgsmål') &&
+                                    !text.includes('hold dig ikke tilbage') &&
+                                    !text.includes('sider klar') &&
+                                    !text.includes('hjælpe') &&
+                                    !text.includes('nemmere') &&
+                                    !text.includes('favoritter') &&
+                                    !text.includes('betale') &&
+                                    !text.includes('direkte') &&
+                                    !text.includes('app') &&
+                                    !text.includes('springer') &&
+                                    !text.includes('over') &&
+                                    !text.includes('hverdage') &&
+                                    !text.includes('åben') &&
+                                    !text.includes('kan også') &&
+                                    !text.includes('få hjælp') &&
+                                    !text.includes('endnu') &&
+                                    !text.includes('nemt') &&
+                                    !text.includes('hurtigt') &&
+                                    !text.includes('Se vores') &&
+                                    !text.includes('andre information') &&
+                                    !text.includes('her') &&
+                                    !text.includes('Ofte stillede') &&
+                                    !text.includes('spørgsmål om') &&
+                                    !text.includes('Særlige') &&
+                                    !text.includes('Kontakt os') &&
+                                    !text.includes('i dag') &&
+                                    !text.includes('Bestil nemt') &&
+                                    !text.includes('hurtigt i appen') &&
+                                    !text.includes('Hvornår har') &&
+                                    !text.includes('åbent') &&
+                                    !text.includes('Hvad kan jeg') &&
+                                    !text.includes('bestille') &&
+                                    !text.includes('Kan jeg') &&
+                                    !text.includes('take away') &&
+                                    !text.includes('Har I meat') &&
+                                    !text.includes('free muligheder') &&
+                                    !text.includes('på menuen') &&
+                                    !text.includes('Side Orders') &&
+                                    !text.includes('Dips') &&
+                                    !text.includes('Det grønne') &&
+                                    !text.match(/^\d+$/) && // Not just numbers
+                                    !text.match(/^[A-Z\s]+$/) && // Not all caps
+                                    text.includes(' ') && // Must contain spaces
+                                    !text.toLowerCase().includes('cookie') &&
+                                    !text.toLowerCase().includes('gdpr') &&
+                                    // Must look like a food item (contains food-related words)
+                                    (text.toLowerCase().includes('pizza') ||
+                                     text.toLowerCase().includes('burger') ||
+                                     text.toLowerCase().includes('pasta') ||
+                                     text.toLowerCase().includes('salat') ||
+                                     text.toLowerCase().includes('salad') ||
+                                     text.toLowerCase().includes('sandwich') ||
+                                     text.toLowerCase().includes('kebab') ||
+                                     text.toLowerCase().includes('shawarma') ||
+                                     text.toLowerCase().includes('kød') ||
+                                     text.toLowerCase().includes('meat') ||
+                                     text.toLowerCase().includes('fisk') ||
+                                     text.toLowerCase().includes('fish') ||
+                                     text.toLowerCase().includes('kylling') ||
+                                     text.toLowerCase().includes('chicken') ||
+                                     text.toLowerCase().includes('bøf') ||
+                                     text.toLowerCase().includes('steak') ||
+                                     text.toLowerCase().includes('sauce') ||
+                                     text.toLowerCase().includes('dressing') ||
+                                     text.toLowerCase().includes('dip') ||
+                                     text.toLowerCase().includes('brød') ||
+                                     text.toLowerCase().includes('bread') ||
+                                     text.toLowerCase().includes('ris') ||
+                                     text.toLowerCase().includes('rice') ||
+                                     text.toLowerCase().includes('pommes') ||
+                                     text.toLowerCase().includes('fries') ||
+                                     text.toLowerCase().includes('cola') ||
+                                     text.toLowerCase().includes('øl') ||
+                                     text.toLowerCase().includes('beer') ||
+                                     text.toLowerCase().includes('vin') ||
+                                     text.toLowerCase().includes('wine') ||
+                                     text.toLowerCase().includes('kaffe') ||
+                                     text.toLowerCase().includes('coffee') ||
+                                     text.toLowerCase().includes('te') ||
+                                     text.toLowerCase().includes('tea') ||
+                                     text.toLowerCase().includes('vand') ||
+                                     text.toLowerCase().includes('water') ||
+                                     text.toLowerCase().includes('juice') ||
+                                     text.toLowerCase().includes('saft') ||
+                                     text.toLowerCase().includes('dessert') ||
+                                     text.toLowerCase().includes('is') ||
+                                     text.toLowerCase().includes('ice') ||
+                                     text.toLowerCase().includes('kage') ||
+                                     text.toLowerCase().includes('cake') ||
+                                     text.toLowerCase().includes('kr') ||
+                                     text.toLowerCase().includes('dkk') ||
+                                     text.includes('€') ||
+                                     text.includes('$') ||
+                                     /\d+/.test(text))) { // Contains numbers (likely prices)
+                                    
+                                    // Extract price if present
+                                    const price = extractPrice(text);
+                                    
+                                    menuItems.push({
+                                        text: text,
+                                        price: price,
+                                        selector: selector,
+                                        url: sourceUrl
+                                    });
+                                }
+                            });
+                        } catch (selectorError) {
+                            // Continue if selector fails
+                        }
+                    }
+                    
+                    // Process and structure menu items better
+                    const structuredItems = processMenuItems(menuItems);
+                    return structuredItems.slice(0, 30); // Limit to 30 items
+                    
+                } catch (error) {
+                    console.error('❌ HTML parsing failed:', error);
+                    return [];
+                }
+            }
+            
+            // Extract price from text
+            function extractPrice(text) {
+                // Common price patterns
+                const pricePatterns = [
+                    /(\d+[,.]?\d*)\s*(kr|dkk|€|euro|dollar|\$|£|pound)/gi,
+                    /(\d+[,.]?\d*)\s*(:-|\.-)/gi,
+                    /kr\.?\s*(\d+[,.]?\d*)/gi,
+                    /\$\s*(\d+[,.]?\d*)/gi,
+                    /€\s*(\d+[,.]?\d*)/gi,
+                    /£\s*(\d+[,.]?\d*)/gi,
+                    /(\d+[,.]?\d*)\s*:-/gi
+                ];
+                
+                for (const pattern of pricePatterns) {
+                    const match = text.match(pattern);
+                    if (match) {
+                        return match[0].trim();
+                    }
+                }
+                
+                return null;
+            }
+            
+            // Process menu items to better understand structure
+            function processMenuItems(items) {
+                const processedItems = [];
+                const seenItems = new Set();
+                
+                // Group items by similarity and structure
+                items.forEach(item => {
+                    const text = item.text;
+                    
+                    // Skip if we've seen this exact text
+                    if (seenItems.has(text.toLowerCase())) {
+                        return;
+                    }
+                    
+                    // Try to separate dish name from description
+                    const structured = parseDishStructure(text);
+                    
+                    processedItems.push({
+                        name: structured.name,
+                        description: structured.description,
+                        price: item.price || structured.price,
+                        fullText: text,
+                        url: item.url
+                    });
+                    
+                    seenItems.add(text.toLowerCase());
+                });
+                
+                return processedItems;
+            }
+            
+            // Parse dish structure (name + description + price)
+            function parseDishStructure(text) {
+                // Common patterns for menu items
+                const patterns = [
+                    // Pattern: "Dish Name\nDescription"
+                    /^([^\n]+)\n([^\n]+)$/,
+                    // Pattern: "Dish Name - Description"
+                    /^([^-]+)\s*-\s*(.+)$/,
+                    // Pattern: "Dish Name: Description"
+                    /^([^:]+):\s*(.+)$/,
+                    // Pattern: "Dish Name\nDescription\nPrice"
+                    /^([^\n]+)\n([^\n]+)\n([^\n]+)$/,
+                    // Pattern: "Dish Name Description Price" (single line)
+                    /^([^0-9]+?)\s+([^0-9]+?)\s+(\d+[,.]?\d*\s*(?:kr|dkk|€|\$|£|:-|\.-))/i
+                ];
+                
+                for (const pattern of patterns) {
+                    const match = text.match(pattern);
+                    if (match) {
+                        const name = match[1].trim();
+                        const description = match[2] ? match[2].trim() : '';
+                        const price = match[3] ? match[3].trim() : extractPrice(text);
+                        
+                        return {
+                            name: name,
+                            description: description,
+                            price: price
+                        };
+                    }
+                }
+                
+                // If no pattern matches, treat as single item
+                return {
+                    name: text,
+                    description: '',
+                    price: extractPrice(text)
+                };
+            }
+            
+            // Find menu-specific pages and scrape them
+            async function findAndScrapeMenuPages(baseUrl, proxies) {
+                const menuPaths = [
+                    // Standard menu paths
+                    '/menu', '/menus', '/our-menu', '/food-menu', 
+                    '/restaurant-menu', '/dining-menu', '/food', '/dining',
+                    '/lunch', '/dinner', '/breakfast', '/cafe-menu',
+                    
+                    // International menu paths
+                    '/speisekarte', '/karte', '/mad', '/ruoka', '/mat',
+                    '/carta', '/meny', '/menu-card', '/food-card',
+                    
+                    // Fast food specific paths
+                    '/products', '/items', '/burgers', '/sandwiches',
+                    '/chicken', '/fries', '/drinks', '/desserts',
+                    '/combo', '/meals', '/value-menu', '/kids-menu',
+                    
+                    // Common restaurant paths
+                    '/eat', '/order', '/takeaway', '/delivery',
+                    '/catering', '/party', '/events', '/specials'
+                ];
+                
+                for (const path of menuPaths) {
+                    try {
+                        const menuUrl = baseUrl.replace(/\/$/, '') + path;
+                        console.log(`🔍 Trying menu URL: ${menuUrl}`);
+                        
+                        for (const proxy of proxies) {
+                            try {
+                                let html = '';
+                                
+                                if (proxy.includes('allorigins')) {
+                                    const response = await fetch(proxy + encodeURIComponent(menuUrl));
+                                    const data = await response.json();
+                                    html = data.contents || '';
+                                } else {
+                                    const response = await fetch(proxy + menuUrl);
+                                    html = await response.text();
+                                }
+                                
+                                if (html && html.length > 1000) {
+                                    const menuItems = await extractMenuFromHTML(html, menuUrl);
+                                    if (menuItems.length > 0) {
+                                        console.log(`✅ Found menu at: ${menuUrl}`);
+                                        return menuItems;
+                                    }
+                                }
+                            } catch (proxyError) {
+                                continue;
+                            }
+                        }
+                    } catch (pathError) {
+                        continue;
+                    }
+                }
+                
+                return [];
+            }
+            
+            // Alternative scraping for modern JavaScript sites
+            async function tryAlternativeScraping(websiteUrl, proxies) {
+                console.log('🔄 Trying alternative scraping for modern sites...');
+                
+                // Try to find JSON data or API endpoints
+                const alternativeUrls = [
+                    websiteUrl + '/api/menu',
+                    websiteUrl + '/api/products', 
+                    websiteUrl + '/api/items',
+                    websiteUrl + '/menu.json',
+                    websiteUrl + '/products.json',
+                    websiteUrl + '/data/menu.json',
+                    websiteUrl.replace('www.', '') + '/api/menu',
+                    websiteUrl.replace('www.', '') + '/api/products'
+                ];
+                
+                for (const altUrl of alternativeUrls) {
+                    try {
+                        console.log(`🔍 Trying API endpoint: ${altUrl}`);
+                        
+                        for (const proxy of proxies) {
+                            try {
+                                let response;
+                                if (proxy.includes('allorigins')) {
+                                    response = await fetch(proxy + encodeURIComponent(altUrl));
+                                    const data = await response.json();
+                                    if (data.contents) {
+                                        const jsonData = JSON.parse(data.contents);
+                                        const menuItems = extractFromJSON(jsonData);
+                                        if (menuItems.length > 0) {
+                                            console.log(`✅ Found menu data at: ${altUrl}`);
+                                            return menuItems;
+                                        }
+                                    }
+                                } else {
+                                    response = await fetch(proxy + altUrl);
+                                    const text = await response.text();
+                                    
+                                    // Try to parse as JSON
+                                    try {
+                                        const jsonData = JSON.parse(text);
+                                        const menuItems = extractFromJSON(jsonData);
+                                        if (menuItems.length > 0) {
+                                            console.log(`✅ Found menu data at: ${altUrl}`);
+                                            return menuItems;
+                                        }
+                                    } catch (jsonError) {
+                                        // Not JSON, continue
+                                    }
+                                }
+                            } catch (proxyError) {
+                                continue;
+                            }
+                        }
+                    } catch (urlError) {
+                        continue;
+                    }
+                }
+                
+                // Try to extract from script tags (common in modern sites)
+                try {
+                    console.log('🔍 Trying to extract from script tags...');
+                    for (const proxy of proxies) {
+                        try {
+                            let html = '';
+                            if (proxy.includes('allorigins')) {
+                                const response = await fetch(proxy + encodeURIComponent(websiteUrl));
+                                const data = await response.json();
+                                html = data.contents || '';
+                            } else {
+                                const response = await fetch(proxy + websiteUrl);
+                                html = await response.text();
+                            }
+                            
+                            if (html) {
+                                const menuItems = extractFromScriptTags(html);
+                                if (menuItems.length > 0) {
+                                    console.log('✅ Found menu data in script tags');
+                                    return menuItems;
+                                }
+                            }
+                        } catch (proxyError) {
+                            continue;
+                        }
+                    }
+                } catch (scriptError) {
+                    console.log('❌ Script tag extraction failed');
+                }
+                
+                return [];
+            }
+            
+            // Extract menu items from JSON data
+            function extractFromJSON(data) {
+                const menuItems = [];
+                
+                // Common JSON structures for menu data
+                const searchPaths = [
+                    'menu', 'menus', 'items', 'products', 'food', 'dishes',
+                    'data.menu', 'data.items', 'data.products',
+                    'response.menu', 'response.items', 'response.products',
+                    'result.menu', 'result.items', 'result.products'
+                ];
+                
+                for (const path of searchPaths) {
+                    try {
+                        const value = getNestedValue(data, path);
+                        if (value && Array.isArray(value)) {
+                            value.forEach(item => {
+                                if (typeof item === 'object' && item !== null) {
+                                    // Look for common property names
+                                    const nameFields = ['name', 'title', 'item', 'product', 'dish', 'food'];
+                                    const descFields = ['description', 'desc', 'details', 'info'];
+                                    
+                                    for (const nameField of nameFields) {
+                                        if (item[nameField] && typeof item[nameField] === 'string') {
+                                            menuItems.push(item[nameField]);
+                                            break;
+                                        }
+                                    }
+                                    
+                                    for (const descField of descFields) {
+                                        if (item[descField] && typeof item[descField] === 'string') {
+                                            menuItems.push(item[descField]);
+                                            break;
+                                        }
+                                    }
+                                } else if (typeof item === 'string') {
+                                    menuItems.push(item);
+                                }
+                            });
+                        }
+                    } catch (pathError) {
+                        continue;
+                    }
+                }
+                
+                return [...new Set(menuItems)].slice(0, 30);
+            }
+            
+            // Helper function to get nested object values
+            function getNestedValue(obj, path) {
+                return path.split('.').reduce((current, key) => {
+                    return current && current[key] !== undefined ? current[key] : undefined;
+                }, obj);
+            }
+            
+            // Extract menu items from script tags
+            function extractFromScriptTags(html) {
+                const menuItems = [];
+                const scriptRegex = /<script[^>]*>([\s\S]*?)<\/script>/gi;
+                let match;
+                
+                while ((match = scriptRegex.exec(html)) !== null) {
+                    const scriptContent = match[1];
+                    
+                    // Look for common patterns in JavaScript
+                    const patterns = [
+                        /menu\s*:\s*\[([\s\S]*?)\]/gi,
+                        /items\s*:\s*\[([\s\S]*?)\]/gi,
+                        /products\s*:\s*\[([\s\S]*?)\]/gi,
+                        /"name"\s*:\s*"([^"]+)"/gi,
+                        /"title"\s*:\s*"([^"]+)"/gi,
+                        /"item"\s*:\s*"([^"]+)"/gi
+                    ];
+                    
+                    for (const pattern of patterns) {
+                        let patternMatch;
+                        while ((patternMatch = pattern.exec(scriptContent)) !== null) {
+                            const text = patternMatch[1] || patternMatch[0];
+                            if (text && text.length > 3 && text.length < 100) {
+                                menuItems.push(text.replace(/"/g, '').trim());
+                            }
+                        }
+                    }
+                }
+                
+                return [...new Set(menuItems)].slice(0, 20);
+            }
+            
+            // DEPRECATED: Old client-side scraping (kept as fallback)
+            async function scrapeRestaurantMenu(websiteUrl) {
+                try {
+                    console.log('🍽️ Starting menu scraping for:', websiteUrl);
+                    
+                    // First, try to find dedicated menu pages
+                    const menuUrls = await findMenuPage(websiteUrl);
+                    
+                    let allMenuItems = [];
+                    
+                    // If we found menu pages, scrape them
+                    if (menuUrls.length > 0) {
+                        console.log('📋 Found', menuUrls.length, 'potential menu pages');
+                        for (const menuUrl of menuUrls.slice(0, 3)) { // Limit to 3 pages
+                            const items = await scrapeMenuFromUrl(menuUrl);
+                            allMenuItems = allMenuItems.concat(items);
+                        }
+                    } else {
+                        // Fallback: scrape the main page
+                        console.log('📄 No dedicated menu pages found, scraping main page');
+                        allMenuItems = await scrapeMenuFromUrl(websiteUrl);
+                    }
+                    
+                    // Remove duplicates and limit results
+                    const uniqueItems = [...new Set(allMenuItems)].slice(0, 20);
+                    console.log('✅ Total unique menu items found:', uniqueItems.length);
+                    return uniqueItems;
+                    
+                } catch (error) {
+                    console.error('❌ Menu scraping failed for', websiteUrl, ':', error);
+                    return [];
+                }
+            }
+
+            // Firestore Integration for Restaurant Menus
+            async function saveRestaurantMenu(restaurantId, restaurantData, menuItems) {
+                try {
+                    console.log('🔥 Saving restaurant menu to Firestore:', restaurantId);
+                    
+                    const restaurantMenuRecord = {
+                        restaurantId: restaurantId,
+                        restaurantName: restaurantData.name || 'Unknown',
+                        website: restaurantData.website || null,
+                        address: restaurantData.address || 'Unknown',
+                        rating: restaurantData.rating || 0,
+                        priceLevel: restaurantData.priceLevel || 0,
+                        menuItems: menuItems || [],
+                        scrapedAt: new Date().toISOString(),
+                        lastUpdated: new Date().toISOString()
+                    };
+                    
+                    const docRef = window.firebaseDoc(window.firebaseDb, 'restaurant-menus', restaurantId);
+                    await window.firebaseSetDoc(docRef, restaurantMenuRecord);
+                    
+                    console.log('✅ Restaurant menu saved to Firestore successfully!');
+                    return true;
+                    
+                } catch (error) {
+                    console.error('❌ Error saving restaurant menu to Firestore:', error);
+                    return false;
+                }
+            }
+
+            async function getRestaurantMenu(restaurantId) {
+                try {
+                    console.log('🔥 Fetching restaurant menu from Firestore:', restaurantId);
+                    const docRef = window.firebaseDoc(window.firebaseDb, 'restaurant-menus', restaurantId);
+                    const docSnap = await window.firebaseGetDoc(docRef);
+                    
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        console.log('✅ Restaurant menu found in Firestore:', data.restaurantName);
+                        return data;
+                    } else {
+                        console.log('⚠️ No restaurant menu found in Firestore for:', restaurantId);
+                        return null;
+                    }
+                } catch (error) {
+                    console.error('❌ Error fetching restaurant menu from Firestore:', error);
+                    return null;
+                }
+            }
+
+            function isMenuRecent(scrapedAt) {
+                const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+                return new Date(scrapedAt) > oneDayAgo;
+            }
+
+            // Shared Restaurant Menu Functions for Firestore
+            async function saveRestaurantMenuToShared(restaurantId, restaurantData, menuItems) {
+                try {
+                    console.log('🔥 Saving restaurant menu to shared Firestore collection:', restaurantId);
+                    
+                    const sharedRestaurantMenuRecord = {
+                        restaurantId: restaurantId,
+                        restaurantName: restaurantData.name || 'Unknown',
+                        website: restaurantData.website || null,
+                        address: restaurantData.address || 'Unknown',
+                        rating: restaurantData.rating || 0,
+                        priceLevel: restaurantData.priceLevel || 0,
+                        menuItems: menuItems || [],
+                        scrapedAt: new Date().toISOString(),
+                        lastUpdated: new Date().toISOString(),
+                        sharedBy: 'system', // Could be enhanced to track user
+                        isShared: true
+                    };
+                    
+                    const docRef = window.firebaseDoc(window.firebaseDb, 'shared-restaurant-menus', restaurantId);
+                    await window.firebaseSetDoc(docRef, sharedRestaurantMenuRecord);
+                    
+                    console.log('✅ Restaurant menu saved to shared Firestore successfully!');
+                    return true;
+                    
+                } catch (error) {
+                    console.error('❌ Error saving restaurant menu to shared Firestore:', error);
+                    return false;
+                }
+            }
+
+            async function getSharedRestaurantMenu(restaurantId) {
+                try {
+                    console.log('🔥 Fetching shared restaurant menu from Firestore:', restaurantId);
+                    const docRef = window.firebaseDoc(window.firebaseDb, 'shared-restaurant-menus', restaurantId);
+                    const docSnap = await window.firebaseGetDoc(docRef);
+                    
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        console.log('✅ Shared restaurant menu found in Firestore:', data.restaurantName);
+                        return data;
+                    } else {
+                        console.log('⚠️ No shared restaurant menu found in Firestore for:', restaurantId);
+                        return null;
+                    }
+                } catch (error) {
+                    console.error('❌ Error fetching shared restaurant menu from Firestore:', error);
+                    return null;
+                }
+            }
+
+            async function getAllSharedRestaurantMenus() {
+                try {
+                    console.log('🔥 Fetching all shared restaurant menus from Firestore');
+                    const querySnapshot = await window.firebaseGetDocs(window.firebaseCollection(window.firebaseDb, 'shared-restaurant-menus'));
+                    const restaurantMenus = [];
+                    
+                    querySnapshot.forEach((doc) => {
+                        const data = doc.data();
+                        restaurantMenus.push({
+                            id: doc.id,
+                            ...data
+                        });
+                    });
+                    
+                    console.log('✅ Found', restaurantMenus.length, 'shared restaurant menus');
+                    return restaurantMenus;
+                    
+                } catch (error) {
+                    console.error('❌ Error fetching all shared restaurant menus:', error);
+                    return [];
+                }
+            }
+
+            async function updateSharedMenuDataWithRestaurants() {
+                try {
+                    console.log('🔄 Updating shared menu data with restaurant menus...');
+                    
+                    // Get all shared restaurant menus
+                    const restaurantMenus = await getAllSharedRestaurantMenus();
+                    
+                    // Create shared menu data structure
+                    const sharedMenuData = {
+                        menus: {}, // Existing canteen menus
+                        restaurantMenus: restaurantMenus.reduce((acc, menu) => {
+                            acc[menu.restaurantId] = {
+                                restaurantName: menu.restaurantName,
+                                website: menu.website,
+                                address: menu.address,
+                                rating: menu.rating,
+                                priceLevel: menu.priceLevel,
+                                menuItems: menu.menuItems,
+                                lastUpdated: menu.lastUpdated,
+                                scrapedAt: menu.scrapedAt
+                            };
+                            return acc;
+                        }, {}),
+                        lastUpdated: new Date().toISOString(),
+                        currentWeek: await menuDB.getCurrentWeekNumber()
+                    };
+                    
+                    // Save to shared-menu-data collection
+                    const docRef = window.firebaseDoc(window.firebaseDb, 'shared-menu-data', 'main');
+                    await window.firebaseSetDoc(docRef, sharedMenuData);
+                    
+                    console.log('✅ Shared menu data updated with', restaurantMenus.length, 'restaurant menus');
+                    return sharedMenuData;
+                    
+                } catch (error) {
+                    console.error('❌ Error updating shared menu data:', error);
+                    return null;
+                }
+            }
+
+            async function getSharedMenuData() {
+                try {
+                    console.log('🔥 Fetching shared menu data from Firestore');
+                    const docRef = window.firebaseDoc(window.firebaseDb, 'shared-menu-data', 'main');
+                    const docSnap = await window.firebaseGetDoc(docRef);
+                    
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        console.log('✅ Shared menu data found with', Object.keys(data.restaurantMenus || {}).length, 'restaurant menus');
+                        return data;
+                    } else {
+                        console.log('⚠️ No shared menu data found in Firestore');
+                        return null;
+                    }
+                } catch (error) {
+                    console.error('❌ Error fetching shared menu data:', error);
+                    return null;
+                }
+            }
+
+            // Restaurant Menu Analysis with Gemini AI
+            async function analyzeRestaurantMenus(restaurants) {
+                const activeKeywords = Array.from(document.querySelectorAll('.keyword-checkbox:checked'))
+                    .map(cb => cb.value).join(', ');
+                const activeFavoriteKeywords = favorites.filter(k => activeKeywords.includes(k)).join(', ');
+                
+                console.log('🔍 Analyzing with preferences:', { activeKeywords, activeFavoriteKeywords });
+                
+                const prompt = `Analyze restaurant menus and match them against user preferences using the same scoring system as the menu.
+                
+RESTAURANTS AND MENUS:
+${restaurants.map(r => `${r.name}: ${r.menuItems.join(', ')}`).join('\n')}
+
+USER PREFERENCES: ${activeKeywords}
+FAVORITE PREFERENCES: ${activeFavoriteKeywords}
+
+MATCHING RULES (same as menu system):
+1. Direct keyword match: +3 points
+2. Synonym/category match: +2 points  
+3. Cuisine/style match: +1 point
+4. Favorite preferences: +2 bonus points
+5. If user has "vegetar"/"vegansk", exclude meat/fish unless marked vegetarian/vegan
+
+OUTPUT: Return JSON with restaurant recommendations and matched dishes.
+Format: {
+  "recommendations": {
+    "restaurant_name": {
+      "score": 5,
+      "matched_dishes": ["dish1", "dish2"],
+      "reason": "Multiple direct matches with favorites"
+    }
+  }
+}`;
+
+                const result = await callGemini(prompt, appToken);
+                return JSON.parse(result);
+            }
+
+            // UI Components for Restaurant Recommendations
+            function showLoadingModal(message) {
+                const loadingModal = document.createElement('div');
+                loadingModal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+                loadingModal.id = 'loading-modal';
+                loadingModal.innerHTML = `
+                    <div class="bg-white rounded-lg p-6 text-center max-w-md mx-4">
+                        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
+                        <p class="text-gray-700">${message}</p>
+                    </div>
+                `;
+                document.body.appendChild(loadingModal);
+                return loadingModal;
+            }
+
+            function hideLoadingModal() {
+                const loadingModal = document.getElementById('loading-modal');
+                if (loadingModal) {
+                    document.body.removeChild(loadingModal);
+                }
+            }
+
+            // Show restaurant selection UI in full-screen grid
+            function renderRestaurantSelection(restaurants) {
+                // Hide loading state and show restaurant selection grid
+                document.getElementById('restaurant-loading').classList.add('hidden');
+                document.getElementById('restaurant-selection-grid').classList.remove('hidden');
+                
+                const grid = document.getElementById('restaurant-selection-grid');
+                grid.innerHTML = '';
+                
+                if (restaurants.length === 0) {
+                    grid.innerHTML = `
+                        <div class="col-span-full text-center py-20">
+                            <div class="text-6xl mb-4">🍽️</div>
+                            <h3 class="text-xl font-semibold text-gray-700 mb-2">No Restaurants Found</h3>
+                            <p class="text-gray-500 mb-6">We couldn't find any restaurants within 300 meters.</p>
+                            <button onclick="location.reload()" class="px-6 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-medium">
+                                Try Again
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    restaurants.forEach(restaurant => {
+                        const restaurantCard = document.createElement('div');
+                        restaurantCard.className = 'border border-gray-200 rounded-lg p-4 hover:shadow-lg hover:border-emerald-400 transition-all cursor-pointer group';
+                        restaurantCard.dataset.placeId = restaurant.place_id;
+                        
+                        const photoUrl = restaurant.photos && restaurant.photos[0] 
+                            ? restaurant.photos[0].getUrl({maxWidth: 400, maxHeight: 300})
+                            : 'https://via.placeholder.com/400x300/e5e7eb/6b7280?text=No+Image';
+                        
+                        restaurantCard.innerHTML = `
+                            <div class="relative mb-3 overflow-hidden rounded-lg">
+                                <img src="${photoUrl}" alt="${restaurant.name}" class="w-full h-40 object-cover group-hover:scale-105 transition-transform duration-300">
+                                ${restaurant.rating ? `
+                                    <div class="absolute top-2 right-2 bg-white px-2 py-1 rounded-full shadow-md flex items-center gap-1">
+                                        <span class="text-yellow-500">⭐</span>
+                                        <span class="text-sm font-semibold">${restaurant.rating}</span>
+                                    </div>
+                                ` : ''}
+                            </div>
+                            <h3 class="text-lg font-semibold text-gray-800 mb-1 group-hover:text-emerald-600 transition-colors">${restaurant.name}</h3>
+                            <p class="text-sm text-gray-600 mb-2">${restaurant.vicinity || restaurant.formatted_address || ''}</p>
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs text-gray-500">${restaurant.types ? restaurant.types[0].replace(/_/g, ' ') : 'Restaurant'}</span>
+                                <span class="text-emerald-600 text-sm font-medium group-hover:translate-x-1 transition-transform">View Menu →</span>
+                            </div>
+                        `;
+                        
+                        restaurantCard.addEventListener('click', async () => {
+                            await handleRestaurantSelection(restaurant);
+                        });
+                        
+                        grid.appendChild(restaurantCard);
+                    });
+                }
+            }
+            
+            // Handle restaurant selection and menu analysis
+            async function handleRestaurantSelection(restaurant) {
+                try {
+                    console.log('🏪 Restaurant selected:', restaurant.name);
+                    
+                    // Show loading state
+                    document.getElementById('restaurant-selection-grid').innerHTML = `
+                        <div class="col-span-full flex items-center justify-center py-20">
+                            <div class="text-center">
+                                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
+                                <p class="text-gray-700 text-lg font-medium">Analyzing ${restaurant.name}...</p>
+                                <p class="text-gray-500 text-sm mt-2">Fetching menu and matching with your preferences</p>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Check database cache first - no need to scrape if we already have it
+                    let menuItems = [];
+                    let restaurantData = {};
+                    
+                    const existingMenu = await getRestaurantMenu(restaurant.place_id);
+                    
+                    // Check if cached menu has actual content (not placeholder)
+                    const hasValidMenu = existingMenu && 
+                                        existingMenu.menuItems && 
+                                        existingMenu.menuItems.length > 0 &&
+                                        !existingMenu.menuItems.some(item => {
+                                            // Handle both string and object menu items
+                                            const itemText = typeof item === 'string' ? item : (item.name || item.text || JSON.stringify(item));
+                                            return itemText.includes('not available') || 
+                                                   itemText.includes('not available online') ||
+                                                   itemText.includes('Please visit') ||
+                                                   itemText.length < 10;
+                                        });
+                    
+                    // Check if menu is recent (within 24 hours) and valid
+                    if (existingMenu && isMenuRecent(existingMenu.scrapedAt) && hasValidMenu) {
+                        console.log('📋 Using cached menu from database - skipping scraping step');
+                        console.log(`   Menu cached: ${new Date(existingMenu.scrapedAt).toLocaleString()}`);
+                        console.log(`   Items found: ${existingMenu.menuItems.length}`);
+                        
+                        // Skip scraping - go directly to menu analysis
+                        menuItems = existingMenu.menuItems;
+                        restaurantData = existingMenu;
+                        
+                        // Update loading message to show we're analyzing preferences
+                        document.getElementById('restaurant-selection-grid').innerHTML = `
+                            <div class="col-span-full flex items-center justify-center py-20">
+                                <div class="text-center">
+                                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
+                                    <p class="text-gray-700 text-lg font-medium">Analyzing Menu with Preferences</p>
+                                    <p class="text-gray-500 text-sm mt-2">Found ${existingMenu.menuItems.length} cached items from ${new Date(existingMenu.scrapedAt).toLocaleDateString()}</p>
+                                </div>
+                            </div>
+                        `;
+                        
+                        // Skip the scraping section entirely and go to analysis
+                    } else {
+                        // No valid cached menu - need to scrape
+                        if (existingMenu && !hasValidMenu) {
+                            console.log('🔄 Cache has placeholder data, re-scraping...');
+                            // Clear the bad cache
+                            try {
+                                const docRef = window.firebaseDoc(window.firebaseDb, 'restaurant-menus', restaurant.place_id);
+                                await window.firebaseDeleteDoc(docRef);
+                                console.log('🗑️ Cleared bad cache');
+                            } catch (clearError) {
+                                console.log('⚠️ Could not clear cache:', clearError);
+                            }
+                        }
+                        console.log('🆕 No valid cached menu found - fetching fresh menu');
+                        
+                        // Update loading message to show we're scraping
+                        document.getElementById('restaurant-selection-grid').innerHTML = `
+                            <div class="col-span-full flex items-center justify-center py-20">
+                                <div class="text-center">
+                                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
+                                    <p class="text-gray-700 text-lg font-medium">Scraping Fresh Menu</p>
+                                    <p class="text-gray-500 text-sm mt-2">Taking screenshots and analyzing with AI...</p>
+                                </div>
+                            </div>
+                        `;
+                        
+                        // Get restaurant details
+                        restaurantData = await getRestaurantDetails(restaurant.place_id);
+                        console.log('🏪 Restaurant data:', restaurantData);
+                        
+                        if (restaurantData.website) {
+                            console.log('🌐 Website found:', restaurantData.website);
+                            // Use new LLM-powered scraping service
+                            menuItems = await scrapeRestaurantMenuWithLLM(
+                                restaurantData.website,
+                                restaurantData.name || restaurant.name,
+                                restaurant.place_id
+                            );
+                            console.log('📋 Scraped menu items:', menuItems.length, 'items');
+                        } else {
+                            console.log('❌ No website found for restaurant');
+                            // Set placeholder menu items when no website is available
+                            menuItems = [
+                                'Menu information not available online',
+                                'Please visit the restaurant for menu details',
+                                'Contact the restaurant directly for current menu'
+                            ];
+                        }
+                        
+                        // Save to Firestore for caching
+                        if (menuItems.length > 0) {
+                            await saveRestaurantMenu(restaurant.place_id, restaurantData, menuItems);
+                            // Also save to shared collection for all users
+                            await saveRestaurantMenuToShared(restaurant.place_id, restaurantData, menuItems);
+                            // Update the shared menu data with restaurant menus
+                            await updateSharedMenuDataWithRestaurants();
+                        }
+                    }
+                    
+                    // Both paths (cached and scraped) continue to analysis below
+                    // Cached path: Skip scraping → Go to analysis
+                    // Scraped path: Scrape menu → Save to cache → Go to analysis
+                    
+                    // If no menu items found, show placeholder
+                    if (menuItems.length === 0) {
+                        menuItems = [
+                            'Menu information not available online',
+                            'Please visit the restaurant or their website for menu details'
+                        ];
+                    }
+                    
+                    // Analyze menu with preferences
+                    const analysisResult = await analyzeRestaurantMenuWithPreferences({
+                        id: restaurant.place_id,
+                        name: restaurantData.name || restaurant.name,
+                        menuItems: menuItems,
+                        rating: restaurantData.rating || restaurant.rating,
+                        address: restaurantData.address || restaurant.vicinity,
+                        website: restaurantData.website,
+                        googleMapsUrl: restaurantData.googleMapsUrl
+                    });
+                    
+                    // Display results in grid format
+                    renderRestaurantMenuGrid(analysisResult);
+                    
+                } catch (error) {
+                    console.error('❌ Restaurant analysis failed:', error);
+                    document.getElementById('restaurant-selection-grid').innerHTML = `
+                        <div class="col-span-full text-center py-20">
+                            <div class="text-6xl mb-4">😕</div>
+                            <h3 class="text-xl font-semibold text-gray-700 mb-2">Unable to Analyze Menu</h3>
+                            <p class="text-gray-500 mb-4">${error.message}</p>
+                            <button onclick="location.reload()" class="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors">
+                                Try Again
+                            </button>
+                        </div>
+                    `;
+                }
+            }
+            
+            // Render restaurant menu in grid format (similar to canteen menu)
+            function renderRestaurantMenuGrid(result) {
+                const { restaurant, analysis } = result;
+                
+                // Hide selection grid and show menu grid
+                document.getElementById('restaurant-selection-grid').classList.add('hidden');
+                document.getElementById('restaurant-menu-grid').classList.remove('hidden');
+                
+                const grid = document.getElementById('restaurant-menu-grid');
+                grid.innerHTML = '';
+                
+                // Restaurant header
+                const headerCard = document.createElement('div');
+                headerCard.className = 'col-span-full bg-gradient-to-r from-emerald-50 to-green-50 rounded-lg p-6 mb-6 border border-emerald-200';
+                headerCard.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-800 mb-2">${restaurant.name}</h2>
+                            <p class="text-gray-600 mb-2">${restaurant.address}</p>
+                            ${restaurant.rating ? `
+                                <div class="flex items-center gap-2 mb-3">
+                                    <span class="text-yellow-500">⭐</span>
+                                    <span class="text-sm font-medium">${restaurant.rating}/5</span>
+                                </div>
+                            ` : ''}
+                            <div class="flex items-center gap-2 mb-3">
+                                <span class="px-3 py-1 rounded-full text-sm font-medium ${
+                                    analysis.overallMatch === 'high' ? 'bg-emerald-100 text-emerald-800' :
+                                    analysis.overallMatch === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-gray-100 text-gray-800'
+                                }">
+                                    ${analysis.overallMatch === 'high' ? '✨ Great Match' : 
+                                      analysis.overallMatch === 'medium' ? '👍 Good Match' : 
+                                      '😐 Some Options'}
+                                </span>
+                            </div>
+                            <p class="text-gray-700 text-sm italic">${analysis.summary}</p>
+                        </div>
+                        <div class="flex gap-2">
+                            ${restaurant.website ? `
+                                <a href="${restaurant.website}" target="_blank" 
+                                   class="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-center font-medium">
+                                    Visit Website →
+                                </a>
+                            ` : ''}
+                            ${restaurant.googleMapsUrl ? `
+                                <a href="${restaurant.googleMapsUrl}" target="_blank" 
+                                   class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-center font-medium">
+                                    View on Maps →
+                                </a>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(headerCard);
+                
+                // Recommended dishes
+                if (analysis.topRecommendations && analysis.topRecommendations.length > 0) {
+                    const recCard = document.createElement('div');
+                    recCard.className = 'col-span-full bg-white rounded-lg p-6 border border-gray-200 mb-6';
+                    recCard.innerHTML = `
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                            🎯 Recommended For You
+                        </h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            ${analysis.topRecommendations.map(rec => `
+                                <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                                    <div class="flex justify-between items-start mb-2">
+                                        <h4 class="text-lg font-semibold text-gray-800 flex-1">${rec.dish}</h4>
+                                        <span class="ml-3 px-2 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-medium">
+                                            Score: ${rec.score}
+                                        </span>
+                                    </div>
+                                    ${rec.price ? `<div class="text-lg font-bold text-emerald-600 mb-2">${rec.price}</div>` : ''}
+                                    ${rec.description ? `<div class="text-sm text-gray-600 mb-2 italic">${rec.description}</div>` : ''}
+                                    <div class="flex flex-wrap gap-2 mt-2">
+                                        ${rec.matchReasons.map(reason => `
+                                            <span class="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">✓ ${reason}</span>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                    grid.appendChild(recCard);
+                }
+                
+                // All menu items (if available)
+                if (restaurant.menuItems && restaurant.menuItems.length > 0) {
+                    const allMenuCard = document.createElement('div');
+                    allMenuCard.className = 'col-span-full bg-white rounded-lg p-6 border border-gray-200';
+                    allMenuCard.innerHTML = `
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                            📋 Full Menu
+                        </h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                            ${Array.isArray(restaurant.menuItems) ? restaurant.menuItems.map(item => {
+                                if (typeof item === 'object' && item.name) {
+                                    return `
+                                        <div class="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors">
+                                            <h4 class="font-medium text-gray-800">${item.name}</h4>
+                                            ${item.description ? `<p class="text-sm text-gray-600 mt-1">${item.description}</p>` : ''}
+                                            ${item.price ? `<p class="text-sm font-semibold text-emerald-600 mt-1">${item.price}</p>` : ''}
+                                        </div>
+                                    `;
+                                } else {
+                                    return `
+                                        <div class="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors">
+                                            <p class="text-gray-800">${typeof item === 'string' ? item : JSON.stringify(item)}</p>
+                                        </div>
+                                    `;
+                                }
+                            }).join('') : '<div class="col-span-full text-center text-gray-500">No menu items available</div>'}
+                        </div>
+                    `;
+                    grid.appendChild(allMenuCard);
+                }
+                
+                // Back button
+                const backButton = document.createElement('div');
+                backButton.className = 'col-span-full text-center mt-6';
+                backButton.innerHTML = `
+                    <button onclick="location.reload()" class="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium">
+                        ← Back to Restaurant Selection
+                    </button>
+                `;
+                grid.appendChild(backButton);
+            }
+            
+            // Analyze single restaurant menu with user preferences
+            async function analyzeRestaurantMenuWithPreferences(restaurant) {
+                const activeKeywords = Array.from(document.querySelectorAll('.keyword-checkbox:checked'))
+                    .map(cb => cb.value).join(', ');
+                const activeFavoriteKeywords = favorites.filter(k => activeKeywords.includes(k)).join(', ');
+                
+                console.log('🔍 Analyzing with preferences:', { activeKeywords, activeFavoriteKeywords });
+                
+                // Limit menu items to prevent timeout (take first 20 items)
+                const limitedMenuItems = restaurant.menuItems.slice(0, 20);
+                
+                // Format menu items with structure
+                const menuItemsFormatted = limitedMenuItems.map((item, i) => {
+                    if (typeof item === 'object' && item.name) {
+                        // Structured item with name, description, price
+                        return `${i + 1}. ${item.name}${item.description ? '\n   Description: ' + item.description : ''}${item.price ? '\n   Price: ' + item.price : ''}`;
+                    } else {
+                        // Simple text item
+                        return `${i + 1}. ${item}`;
+                    }
+                }).join('\n');
+                
+                const prompt = `Analyze this restaurant's menu and recommend the BEST dishes based on user preferences.
+                
+RESTAURANT: ${restaurant.name}
+MENU ITEMS:
+${menuItemsFormatted}
+
+USER PREFERENCES: ${activeKeywords || 'No specific preferences'}
+FAVORITE PREFERENCES: ${activeFavoriteKeywords || 'None'}
+
+IMPORTANT MATCHING RULES:
+1. Direct keyword match in dish name: +3 points
+2. Keyword match in description: +2 points (e.g., "Bolognese" matches "kødsauce" in description)
+3. Synonym/category match: +2 points  
+4. Cuisine/style match: +1 point
+5. Favorite preferences: +2 bonus points
+6. Include PRICE in recommendations when available
+
+OUTPUT: Return JSON with:
+{
+  "topRecommendations": [
+    {
+      "dish": "dish name",
+      "price": "price if available",
+      "score": 5,
+      "matchReasons": ["reason 1", "reason 2"],
+      "description": "dish description if available"
+    }
+  ],
+  "overallMatch": "high|medium|low",
+  "summary": "Brief explanation of why this restaurant matches/doesn't match preferences"
+}
+
+Return top 5 dishes maximum. Include prices when available.`;
+
+                try {
+                    // Add timeout wrapper for restaurant analysis
+                    const analysisPromise = callGemini(prompt, appToken);
+                    const timeoutPromise = new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('Restaurant analysis timeout after 15 seconds')), 15000)
+                    );
+                    
+                    const result = await Promise.race([analysisPromise, timeoutPromise]);
+                    console.log('🔍 Gemini analysis result:', result, typeof result);
+                    
+                    // Handle both JSON string and object responses
+                    let analysisData;
+                    if (typeof result === 'string') {
+                        analysisData = JSON.parse(result);
+                    } else if (typeof result === 'object') {
+                        analysisData = result;
+                    } else {
+                        throw new Error('Unexpected response format from Gemini');
+                    }
+                    
+                    return {
+                        restaurant: restaurant,
+                        analysis: analysisData
+                    };
+                } catch (error) {
+                    console.error('❌ Restaurant analysis failed:', error);
+                    
+                    // Return fallback analysis if Gemini fails
+                    return {
+                        restaurant: restaurant,
+                        analysis: {
+                            topRecommendations: limitedMenuItems.slice(0, 5).map((item, i) => ({
+                                dish: typeof item === 'object' ? item.name : item,
+                                price: typeof item === 'object' ? item.price : 'Price not available',
+                                score: 3,
+                                matchReasons: ['Menu item available'],
+                                description: typeof item === 'object' ? item.description : ''
+                            })),
+                            overallMatch: 'medium',
+                            summary: `Found ${limitedMenuItems.length} menu items. Analysis unavailable due to timeout.`
+                        }
+                    };
+                }
+            }
+            
+            // Display restaurant menu analysis results
+            function renderRestaurantMenuAnalysis(result, modal) {
+                const { restaurant, analysis } = result;
+                
+                const modalContent = modal.querySelector('.overflow-y-auto');
+                modalContent.innerHTML = '';
+                modalContent.className = 'p-6 overflow-y-auto flex-1';
+                
+                // Header section
+                const headerSection = document.createElement('div');
+                headerSection.className = 'mb-6';
+                headerSection.innerHTML = `
+                    <button onclick="location.reload()" class="text-emerald-600 hover:text-emerald-800 text-sm mb-3 flex items-center gap-1">
+                        ← Back to restaurants
+                    </button>
+                    <h3 class="text-2xl font-bold text-gray-800 mb-2">${restaurant.name}</h3>
+                    <p class="text-gray-600 text-sm mb-2">${restaurant.address}</p>
+                    ${restaurant.rating ? `<div class="flex items-center gap-2 mb-3">
+                        <span class="text-yellow-500">⭐</span>
+                        <span class="text-sm font-medium">${restaurant.rating}/5</span>
+                    </div>` : ''}
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="px-3 py-1 rounded-full text-sm font-medium ${
+                            analysis.overallMatch === 'high' ? 'bg-emerald-100 text-emerald-800' :
+                            analysis.overallMatch === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-gray-100 text-gray-800'
+                        }">
+                            ${analysis.overallMatch === 'high' ? '✨ Great Match' : 
+                              analysis.overallMatch === 'medium' ? '👍 Good Match' : 
+                              '😐 Some Options'}
+                        </span>
+                    </div>
+                    <p class="text-gray-700 text-sm italic bg-gray-50 p-3 rounded-lg">${analysis.summary}</p>
+                `;
+                modalContent.appendChild(headerSection);
+                
+                // Recommendations section
+                const recSection = document.createElement('div');
+                recSection.innerHTML = `<h4 class="text-lg font-semibold text-gray-800 mb-3">🎯 Recommended For You</h4>`;
+                
+                if (analysis.topRecommendations && analysis.topRecommendations.length > 0) {
+                    analysis.topRecommendations.forEach((rec, index) => {
+                        const dishCard = document.createElement('div');
+                        dishCard.className = 'border border-gray-200 rounded-lg p-4 mb-3 hover:shadow-md transition-shadow';
+                        
+                        // Build price display
+                        const priceDisplay = rec.price ? 
+                            `<div class="text-lg font-bold text-emerald-600 mb-2">${rec.price}</div>` : '';
+                        
+                        // Build description display
+                        const descriptionDisplay = rec.description ? 
+                            `<div class="text-sm text-gray-600 mb-2 italic">${rec.description}</div>` : '';
+                        
+                        dishCard.innerHTML = `
+                            <div class="flex justify-between items-start mb-2">
+                                <h5 class="text-md font-semibold text-gray-800 flex-1">${rec.dish}</h5>
+                                <span class="ml-3 px-2 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-medium">
+                                    Score: ${rec.score}
+                                </span>
+                            </div>
+                            ${priceDisplay}
+                            ${descriptionDisplay}
+                            <div class="flex flex-wrap gap-2 mt-2">
+                                ${rec.matchReasons.map(reason => `
+                                    <span class="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">✓ ${reason}</span>
+                                `).join('')}
+                            </div>
+                        `;
+                        recSection.appendChild(dishCard);
+                    });
+                } else {
+                    recSection.innerHTML += `
+                        <div class="text-center py-8 bg-gray-50 rounded-lg">
+                            <p class="text-gray-600">No specific matches found, but you might still enjoy their menu!</p>
+                        </div>
+                    `;
+                }
+                
+                modalContent.appendChild(recSection);
+                
+                // Links section
+                if (restaurant.website || restaurant.googleMapsUrl) {
+                    const linksSection = document.createElement('div');
+                    linksSection.className = 'mt-6 pt-4 border-t border-gray-200 flex gap-3';
+                    if (restaurant.website) {
+                        linksSection.innerHTML += `
+                            <a href="${restaurant.website}" target="_blank" 
+                               class="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-center font-medium">
+                                Visit Website →
+                            </a>
+                        `;
+                    }
+                    if (restaurant.googleMapsUrl) {
+                        linksSection.innerHTML += `
+                            <a href="${restaurant.googleMapsUrl}" target="_blank" 
+                               class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-center font-medium">
+                                View on Maps →
+                            </a>
+                        `;
+                    }
+                    modalContent.appendChild(linksSection);
+                }
+            }
+
             // --- Event Listeners ---
             async function showPreferenceSuggestionPopup(daysWithNoMatch, menuData) {
                 console.log('🔍 Suggestion popup triggered for days:', daysWithNoMatch);
@@ -2097,12 +4597,291 @@ Example: ["fjerkræ", "okse", "indisk", "vegetar", "salat"]`;
             // Initialize view toggle
             initViewToggle();
             
-            // Auto-click the "Get Menu & Recommendations" button when page loads
-            setTimeout(() => {
-                processBtn.click();
-            }, 1); // Minimal delay to ensure DOM is fully loaded
+            // Tab switching functionality
+            let currentTab = 'canteen';
+            
+            function switchTab(tabName) {
+                // Update tab buttons
+                const canteenTab = document.getElementById('canteen-tab');
+                const restaurantTab = document.getElementById('restaurant-tab');
+                const tabDescription = document.getElementById('tab-description');
+                
+                // Update content visibility
+                const canteenContent = document.getElementById('canteen-content');
+                const restaurantContent = document.getElementById('restaurant-content');
+                
+                // Get the process button to show/hide it
+                const processBtn = document.getElementById('process-btn');
+                const processBtnContainer = processBtn.parentElement;
+                
+                if (tabName === 'canteen') {
+                    // Canteen tab active
+                    canteenTab.className = 'flex-1 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 shadow-sm transition-all duration-200';
+                    restaurantTab.className = 'flex-1 px-4 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 transition-all duration-200';
+                    
+                    canteenContent.classList.remove('hidden');
+                    restaurantContent.classList.add('hidden');
+                    
+                    tabDescription.textContent = 'Your Weekly Dining Recommendation(s)';
+                    currentTab = 'canteen';
+                    
+                    // Show the "Get Menu & Recommendations" button
+                    processBtnContainer.classList.remove('hidden');
+                } else {
+                    // Restaurant tab active
+                    restaurantTab.className = 'flex-1 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 shadow-sm transition-all duration-200';
+                    canteenTab.className = 'flex-1 px-4 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 transition-all duration-200';
+                    
+                    restaurantContent.classList.remove('hidden');
+                    canteenContent.classList.add('hidden');
+                    
+                    tabDescription.textContent = 'Discover nearby restaurants with personalized menu recommendations';
+                    currentTab = 'restaurant';
+                    
+                    // Hide the "Get Menu & Recommendations" button
+                    processBtnContainer.classList.add('hidden');
+                }
+            }
+            
+            // Tab event listeners
+            document.getElementById('canteen-tab').addEventListener('click', () => {
+                switchTab('canteen');
+            });
+            
+            document.getElementById('restaurant-tab').addEventListener('click', () => {
+                switchTab('restaurant');
+            });
+            
+            // Find Restaurants Button
+            document.getElementById('find-restaurants-btn').addEventListener('click', async () => {
+                try {
+                    console.log('🍽️ Restaurant Menu activated!');
+                    showLoadingModal('🍽️ Discovering nearby restaurants...');
+                    let location;
+                    try {
+                        location = await requestUserLocation();
+                    } catch (locationError) {
+                        console.error('❌ Automatic location failed:', locationError);
+                        hideLoadingModal();
+                        const useManual = confirm('Unable to detect your location automatically.\n\nWould you like to enter your coordinates manually?\n\nYou can find your coordinates on Google Maps by right-clicking your location.');
+                        if (useManual) {
+                            showLoadingModal('📍 Waiting for manual location input...');
+                            try {
+                                location = await requestManualLocation();
+                            } catch (manualError) {
+                                hideLoadingModal();
+                                alert('Location entry cancelled. The Restaurant Menu feature requires your location to find nearby restaurants.');
+                                return;
+                            }
+                        } else {
+                            alert('Location is required to find nearby restaurants. Please enable location services and try again.');
+                            return;
+                        }
+                    }
+                    await processNearbyRestaurants(location);
+                } catch (error) {
+                    console.error('❌ Restaurant Menu failed:', error);
+                    hideLoadingModal();
+                    alert('Sorry, something went wrong. Please try again.');
+                }
+            });
+            
+            // Test Location Button (for debugging) - Show on double-click of header
+            document.querySelector('h1').addEventListener('dblclick', () => {
+                const testBtn = document.getElementById('test-location-btn');
+                const clearBtn = document.getElementById('clear-cache-btn');
+                const isVisible = testBtn.style.display === 'flex';
+                testBtn.style.display = isVisible ? 'none' : 'flex';
+                clearBtn.style.display = isVisible ? 'none' : 'flex';
+                console.log('🧪 Debug buttons toggled - double-click "Menu" header');
+            });
+            
+            document.getElementById('test-location-btn').addEventListener('click', async () => {
+                console.log('🧪 Using test location (Copenhagen)');
+                const testLocation = { lat: 55.6761, lng: 12.5683 }; // Copenhagen
+                await processNearbyRestaurants(testLocation);
+            });
+            
+            // Clear cache button (for debugging)
+            document.getElementById('clear-cache-btn').addEventListener('click', async () => {
+                console.log('🗑️ Clearing all restaurant cache...');
+                try {
+                    const querySnapshot = await window.firebaseGetDocs(window.firebaseCollection(window.firebaseDb, 'restaurant-menus'));
+                    const deletePromises = [];
+                    querySnapshot.forEach((doc) => {
+                        deletePromises.push(window.firebaseDeleteDoc(doc.ref));
+                    });
+                    await Promise.all(deletePromises);
+                    console.log('✅ Cleared', deletePromises.length, 'cached restaurant menus');
+                    alert('Restaurant cache cleared! Try selecting a restaurant again.');
+                } catch (error) {
+                    console.error('❌ Failed to clear cache:', error);
+                    alert('Failed to clear cache: ' + error.message);
+                }
+            });
+            
+            // Main restaurant processing function
+            async function processNearbyRestaurants(location) {
+                try {
+                    console.log('🎯 Processing restaurants for location:', location);
+                    
+                    // Update loading message
+                    hideLoadingModal();
+                    showLoadingModal('🗺️ Finding restaurants within 300 meters...');
+                    
+                    // Verify Google Maps API is loaded
+                    console.log('🔍 Checking Google Maps API status...');
+                    console.log('Google object:', !!window.google);
+                    console.log('Google Maps:', !!(window.google && window.google.maps));
+                    console.log('Google Places:', !!(window.google && window.google.maps && window.google.maps.places));
+                    
+                    if (!window.google || !window.google.maps || !window.google.maps.places) {
+                        hideLoadingModal();
+                        alert('Google Maps API not loaded. Please refresh the page and try again.');
+                        return;
+                    }
+                    
+                    // Find nearby restaurants within 300 meters with timeout
+                    console.log('🔍 Starting restaurant search with 20s timeout...');
+                    
+                    let nearbyRestaurants;
+                    try {
+                        const searchPromise = findNearbyRestaurants(location, 300);
+                        const timeoutPromise = new Promise((_, reject) => 
+                            setTimeout(() => {
+                                console.log('⏰ Search timeout reached (20 seconds)');
+                                reject(new Error('Search timeout after 20 seconds'));
+                            }, 20000)
+                        );
+                        
+                        console.log('🏁 Racing search vs timeout...');
+                        nearbyRestaurants = await Promise.race([searchPromise, timeoutPromise]);
+                        
+                        console.log('🔍 Nearby restaurants found (300m):', nearbyRestaurants.length);
+                        console.log('📍 Search location:', location);
+                        console.log('🏪 Restaurant details:', nearbyRestaurants);
+                        
+                        if (nearbyRestaurants.length === 0) {
+                            hideLoadingModal();
+                            alert('No restaurants found within 300 meters of your location. Try moving to a more populated area or updating your preferences.');
+                            return;
+                        }
+                        
+                        // Remove loading and show restaurant selection UI
+                        hideLoadingModal();
+                        renderRestaurantSelection(nearbyRestaurants.slice(0, 10));
+                        return;
+                        
+                    } catch (searchError) {
+                        console.error('❌ Restaurant search failed:', searchError);
+                        hideLoadingModal();
+                        
+                        if (searchError.message.includes('timeout')) {
+                            alert('Restaurant search timed out after 20 seconds. Please try again or check your internet connection.');
+                        } else {
+                            alert(`Restaurant search failed: ${searchError.message}`);
+                        }
+                        return;
+                    }
+                    
+                    // OLD CODE BELOW - KEPT FOR REFERENCE BUT NOT EXECUTED
+                    // Update loading message
+                    hideLoadingModal();
+                    showLoadingModal('🍽️ Analyzing restaurant menus...');
+                    
+                    // Process restaurants and scrape menus
+                    const restaurantsWithMenus = [];
+                    for (const restaurant of nearbyRestaurants.slice(0, 5)) { // Limit to 5 restaurants
+                        try {
+                            // Check if we already have this restaurant's menu in Firestore
+                            const existingMenu = await getRestaurantMenu(restaurant.place_id);
+                            
+                            let menuItems = [];
+                            let restaurantData = {};
+                            
+                            if (existingMenu && isMenuRecent(existingMenu.scrapedAt)) {
+                                // Use cached menu if it's recent (less than 24 hours old)
+                                console.log('📋 Using cached menu for:', restaurant.name);
+                                menuItems = existingMenu.menuItems;
+                                restaurantData = existingMenu;
+                            } else {
+                                // Get fresh restaurant details and scrape menu
+                                restaurantData = await getRestaurantDetails(restaurant.place_id);
+                                
+                                if (restaurantData.website) {
+                                    menuItems = await scrapeRestaurantMenu(restaurantData.website);
+                                    
+                                    // Save to Firestore for future use
+                                    await saveRestaurantMenu(restaurant.place_id, restaurantData, menuItems);
+                                    // Also save to shared collection for all users
+                                    await saveRestaurantMenuToShared(restaurant.place_id, restaurantData, menuItems);
+                                    // Update the shared menu data with restaurant menus
+                                    await updateSharedMenuDataWithRestaurants();
+                                }
+                            }
+                            
+                            restaurantsWithMenus.push({
+                                id: restaurant.place_id,
+                                name: restaurantData.name,
+                                website: restaurantData.website,
+                                address: restaurantData.address,
+                                rating: restaurantData.rating,
+                                priceLevel: restaurantData.priceLevel,
+                                menuItems: menuItems
+                            });
+                            
+                        } catch (error) {
+                            console.error(`Failed to process ${restaurant.name}:`, error);
+                        }
+                    }
+                    
+                    if (restaurantsWithMenus.length === 0) {
+                        hideLoadingModal();
+                        alert('No restaurants with accessible menus found nearby. This could be due to website restrictions or network issues.');
+                        return;
+                    }
+                    
+                    // Update loading message
+                    hideLoadingModal();
+                    showLoadingModal('🤖 Analyzing menus with your preferences...');
+                    
+                    // Analyze menus with user preferences
+                    const recommendations = await analyzeRestaurantMenus(restaurantsWithMenus);
+                    
+                    // Remove loading modal
+                    hideLoadingModal();
+                    
+                    // Display results
+                    renderNearbyRestaurants(restaurantsWithMenus, recommendations);
+                    
+                } catch (error) {
+                    console.error('❌ Easter egg failed:', error);
+                    hideLoadingModal();
+                    
+                    let errorMessage = 'Sorry, we couldn\'t find nearby restaurants.';
+                    if (error.message.includes('Location')) {
+                        errorMessage = 'Location access is required to find nearby restaurants. Please enable location permissions and try again.';
+                    } else if (error.message.includes('Places API')) {
+                        errorMessage = 'Unable to search for restaurants. Please check your internet connection and try again.';
+                    } else if (error.message.includes('Gemini')) {
+                        errorMessage = 'Unable to analyze restaurant menus. Please try again later.';
+                    }
+                    
+                    alert(errorMessage);
+                }
+            }
         });
     </script>
+
+    
+    <!-- Test Location Button (for debugging) -->
+        <div id="test-location-btn" class="fixed bottom-20 right-4 w-14 h-14 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full cursor-pointer opacity-30 hover:opacity-100 transition-all duration-300 shadow-lg z-50 flex items-center justify-center" title="🧪 Test with Copenhagen location" style="display: none;">
+            <div class="text-white text-2xl">🧪</div>
+        </div>
+        
+        <div id="clear-cache-btn" class="fixed bottom-32 right-4 w-14 h-14 bg-gradient-to-r from-red-500 to-pink-500 rounded-full cursor-pointer opacity-30 hover:opacity-100 transition-all duration-300 shadow-lg z-50 flex items-center justify-center" title="🗑️ Clear restaurant cache" style="display: none;">
+            <div class="text-white text-2xl">🗑️</div>
+        </div>
 </body>
 </html>
 

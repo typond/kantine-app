@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow public read/write access to menus collection
+    match /menus/{week} {
+      allow read: if true;
+      allow write: if true;
+    }
+    
+    // Allow public read/write access to restaurant-menus collection (individual restaurant caches)
+    match /restaurant-menus/{restaurantId} {
+      allow read: if true;
+      allow write: if true;
+    }
+    
+    // Allow public read/write access to shared-restaurant-menus collection (shared across all users)
+    match /shared-restaurant-menus/{restaurantId} {
+      allow read: if true;
+      allow write: if true;
+    }
+    
+    // Allow public read/write access to shared-menu-data collection (centralized shared data)
+    match /shared-menu-data/{document} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}
